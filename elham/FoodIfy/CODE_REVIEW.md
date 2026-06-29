@@ -360,7 +360,36 @@ interface SmsGatewayInterface {
 | 2 | `create()` و `edit()` — غير مطلوبة في API (للـ Blade فقط) |
 | 3 | لا Actions ولا Services ولا Repositories |
 | 4 | Namespace `api` lowercase — المفروض `Api` (PSR-4) |
-| 5 | تعليق `// ✅ ده المهم` — noise في الكود |
+
+**قاعدة الـ Controllers الفاضية (إلزامية):**
+
+> **لا تضع أي تعليقات على الـ controller الفاضي** — لا PHPDoc، لا `//` داخل الـ methods، ولا تعليقات على الـ imports.  
+> الـ scaffold يفضل يفضل **نظيف وفاضي** لحد ما يتنفّذ الـ endpoint فعليًا.  
+> أول ما الـ method يتملّى، وقتها بس تضيف الكود الحقيقي (FormRequest + Action + return).
+
+```php
+// ✅ Controller فاضي — بدون تعليقات
+class MealController extends Controller
+{
+    public function index()
+    {
+    }
+
+    public function store(StoreMealRequest $request, StoreMealAction $action): JsonResponse
+    {
+        return $this->responder->created($action->execute($request->toDto()));
+    }
+}
+
+// ❌ ممنوع على controller فاضي
+/**
+ * Display a listing of the resource.
+ */
+public function index()
+{
+    // TODO: implement later
+}
+```
 
 **قبل التنفيذ — أنشئ لكل module:**
 
@@ -721,6 +750,7 @@ public function test_login_fails_with_wrong_password(): void
 | DTOs | `readonly class` (PHP 8.2+) |
 | Repositories | Interface في `Contracts/`, Implementation في `Repositories/` |
 | لا تعليقات عربية في الكود | استخدم PHPDoc إنجليزي أو self-documenting names |
+| Controllers فاضية | **بدون أي comments** — لا PHPDoc scaffold ولا `//` ولا TODO لحد التنفيذ |
 | API methods | لا `create()` / `edit()` في API controllers |
 
 ---
@@ -750,6 +780,7 @@ public function test_login_fails_with_wrong_password(): void
 13. Feature + Unit tests
 14. إعادة تسمية namespace `api` → `Api`
 15. حذف scaffold methods (`create`, `edit`) من API controllers
+16. إبقاء الـ controllers الفاضية **بدون تعليقات** لحد ما تتنفّذ
 
 ---
 
