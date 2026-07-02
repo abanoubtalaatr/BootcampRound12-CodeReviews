@@ -19,4 +19,5 @@
 | أسامة (Osama) | Online Restaurant | [osama/OnlineRestaurant/CODE_REVIEW.md](osama/OnlineRestaurant/CODE_REVIEW.md) |
 | محمد إسماعيل (Mohamed Esmail) | FoodIfy | [mohamedEsmail/FoodIfy/CODE_REVIEW.md](mohamedEsmail/FoodIfy/CODE_REVIEW.md) |
 | عبد الرحمن (3bd-ulrahman) | FoodIfy | [3bd-ulrahman/FoodIfy/CODE_REVIEW.md](3bd-ulrahman/FoodIfy/CODE_REVIEW.md) |
+| علي (Ali) | FoodIfy | [ali/FoodIfy/CODE_REVIEW.md](ali/FoodIfy/CODE_REVIEW.md) |
 
