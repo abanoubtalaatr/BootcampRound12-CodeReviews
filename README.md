@@ -16,4 +16,5 @@
 |--------|---------|-------|
 | الهام (Elham) | FoodIfy | [elham/FoodIfy/CODE_REVIEW.md](elham/FoodIfy/CODE_REVIEW.md) |
 | عبدالله (Abdella) | FoodIfy | [abdella/FoodIfy/CODE_REVIEW.md](abdella/FoodIfy/CODE_REVIEW.md) |
+| أسامة (Osama) | Online Restaurant | [osama/OnlineRestaurant/CODE_REVIEW.md](osama/OnlineRestaurant/CODE_REVIEW.md) |
 
