@@ -21,4 +21,5 @@
 | عبد الرحمن (3bd-ulrahman) | FoodIfy | [3bd-ulrahman/FoodIfy/CODE_REVIEW.md](3bd-ulrahman/FoodIfy/CODE_REVIEW.md) |
 | علي (Ali) | FoodIfy | [ali/FoodIfy/CODE_REVIEW.md](ali/FoodIfy/CODE_REVIEW.md) |
 | محمد علي (Mohamed Ali) | FoodIfy | [mohamedAli/FoodIfy/CODE_REVIEW.md](mohamedAli/FoodIfy/CODE_REVIEW.md) |
+| عزت (Ezzat) | FoodIfy | [ezzat/FoodIfy/CODE_REVIEW.md](ezzat/FoodIfy/CODE_REVIEW.md) |
 
