@@ -15,4 +15,5 @@
 | الطالب | المشروع | الملف |
 |--------|---------|-------|
 | الهام (Elham) | FoodIfy | [elham/FoodIfy/CODE_REVIEW.md](elham/FoodIfy/CODE_REVIEW.md) |
+| عبدالله (Abdella) | Foodify | [abdella/Foodify/CODE_REVIEW.md](abdella/Foodify/CODE_REVIEW.md) |
 
