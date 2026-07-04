@@ -24,4 +24,5 @@
 | عزت (Ezzat) | FoodIfy | [ezzat/FoodIfy/CODE_REVIEW.md](ezzat/FoodIfy/CODE_REVIEW.md) |
 | مصطفى (Mostafa) | FoodIfy | [mostafa/FoodIfy/CODE_REVIEW.md](mostafa/FoodIfy/CODE_REVIEW.md) |
 | محمد عادل (MohamedAdel) | FoodIfy | [mohamedAdel/FoodIfy/CODE_REVIEW.md](mohamedAdel/FoodIfy/CODE_REVIEW.md) |
+| يوسف (Yossef) | FoodIfy | [yossef/FoodIfy/CODE_REVIEW.md](yossef/FoodIfy/CODE_REVIEW.md) |
 
