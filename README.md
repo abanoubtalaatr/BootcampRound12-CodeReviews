@@ -23,4 +23,5 @@
 | محمد علي (Mohamed Ali) | FoodIfy | [mohamedAli/FoodIfy/CODE_REVIEW.md](mohamedAli/FoodIfy/CODE_REVIEW.md) |
 | عزت (Ezzat) | FoodIfy | [ezzat/FoodIfy/CODE_REVIEW.md](ezzat/FoodIfy/CODE_REVIEW.md) |
 | مصطفى (Mostafa) | FoodIfy | [mostafa/FoodIfy/CODE_REVIEW.md](mostafa/FoodIfy/CODE_REVIEW.md) |
+| محمد عادل (MohamedAdel) | FoodIfy | [mohamedAdel/FoodIfy/CODE_REVIEW.md](mohamedAdel/FoodIfy/CODE_REVIEW.md) |
 
