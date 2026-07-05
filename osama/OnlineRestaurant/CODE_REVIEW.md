@@ -667,9 +667,7 @@ final class ProductController extends Controller
 
 > **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Products/Categories, Reset Password, Category Details, Product Details, Settings, Payments/Checkout.
 
-**تاريخ التحديث:** 5 يوليو 2026 — بعد `git pull` من آخر commit على remote لكل مشروع. — **Already up to date** (no new commits).
-
-**Overall Feature Completeness: ~19%** — schema-first scaffold, API layer not built.
+**Overall Feature Completeness: ~19%**
 
 ### 13.1 Summary
 

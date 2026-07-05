@@ -634,9 +634,7 @@ public function test_user_can_register_and_verify_otp(): void
 
 > **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
 
-**تاريخ التحديث:** 5 يوليو 2026 — بعد `git pull` من آخر commit على remote لكل مشروع. — **Already up to date** (no new commits).
-
-**Overall Feature Completeness: ~63%** — unchanged.
+**Overall Feature Completeness: ~63%**
 
 ### 13.1 Summary
 

@@ -465,8 +465,6 @@ final class RegisteredUserController extends Controller
 
 > **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
 
-**تاريخ التحديث:** 5 يوليو 2026 — بعد `git pull` من آخر commit على remote لكل مشروع. (+1 commit — **Checkout + Order model added**).
-
 ### 13.1 Feature Matrix
 
 | # | Feature | الحالة | Route / Implementation | النواقص |
@@ -480,7 +478,7 @@ final class RegisteredUserController extends Controller
 | 7 | **Meal Details** | ✅ **95%** | show | — |
 | 8 | **Favorites** | ✅ **90%** | list + toggle | — |
 | 9 | **Cart** | ✅ **90%** | full CRUD | — |
-| 10 | **Checkout** | 🟡 **70%** | `POST /api/checkout` | **NEW** — no payment gateway |
+| 10 | **Checkout** | 🟡 **70%** | `POST /api/checkout` | no payment gateway |
 | 11 | **Payment** | 🔴 **15%** | — | orders table only |
 | 12 | **My Orders** | 🔴 **20%** | — | **no GET /orders** |
 | 13 | **Order Details** | 🔴 **20%** | — | **no show route** |
@@ -488,7 +486,7 @@ final class RegisteredUserController extends Controller
 | 15 | **Settings** | 🔴 **0%** | — | — |
 | 16 | **Admin** | 🔴 **0%** | — | — |
 
-**Overall Feature Completeness: ~45%** *(كان ~38% — checkout added)*
+**Overall Feature Completeness: ~45%**
 
 ### 13.2 Route Map
 

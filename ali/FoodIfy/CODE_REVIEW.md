@@ -503,8 +503,6 @@ final class VerifyOTPController extends Controller
 
 > **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
 
-**تاريخ التحديث:** 5 يوليو 2026 — بعد `git pull` من آخر commit على remote لكل مشروع.
-
 **Prefix:** `/api/v1` — بعد pull (+18 commits): catalog, cart, checkout, orders, notifications, admin **كلها موجودة**.
 
 ### 13.1 Feature Matrix
@@ -528,7 +526,7 @@ final class VerifyOTPController extends Controller
 | 15 | **Settings** | 🔴 **0%** | — | — |
 | 16 | **Admin** | 🟡 **45%** | `admin/users` index/show | minimal admin |
 
-**Overall Feature Completeness: ~76%** *(كان ~12% — تحليل على نسخة auth-only)*
+**Overall Feature Completeness: ~76%**
 
 ### 13.2 Route Map
 

@@ -656,15 +656,13 @@ public function test_forgot_password_reset_flow(): void
 
 > **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
 
-**تاريخ التحديث:** 5 يوليو 2026 — بعد `git pull` من آخر commit على remote لكل مشروع. (+3 commits — **Profile module added**).
-
 ### 13.1 Feature Matrix
 
 | # | Feature | الحالة | Route / Implementation | النواقص |
 |---|---------|--------|------------------------|---------|
 | 1 | **Authentication** | ✅ **95%** | full OTP + Sanctum | — |
 | 2 | **Reset Password** | 🟡 **70%** | forgot + reset | OTP reuse bug |
-| 3 | **Profile** | ✅ **88%** | show, update, change-password, orders | **NEW after pull** |
+| 3 | **Profile** | ✅ **88%** | show, update, change-password, orders | — |
 | 4 | **Categories** | 🟡 **75%** | via meals/categories | no category show |
 | 5 | **Category Details** | 🟡 **40%** | filter only | — |
 | 6 | **Meals** | ✅ **90%** | index + show | auth required |
@@ -679,7 +677,7 @@ public function test_forgot_password_reset_flow(): void
 | 15 | **Settings** | 🔴 **0%** | — | — |
 | 16 | **Admin** | 🔴 **0%** | — | — |
 
-**Overall Feature Completeness: ~68%** *(كان ~63% — Profile +8%)*
+**Overall Feature Completeness: ~68%**
 
 ### 13.3 Feature Completeness Scorecard
 

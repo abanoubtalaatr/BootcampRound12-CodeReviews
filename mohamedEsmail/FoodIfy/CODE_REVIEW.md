@@ -552,8 +552,6 @@ final class CheckoutController extends Controller
 
 > **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
 
-**تاريخ التحديث:** 5 يوليو 2026 — بعد `git pull` من آخر commit على remote لكل مشروع. (+4 commits — **Admin web panel + CRUD tests**).
-
 ### 13.1 Feature Matrix
 
 | # | Feature | الحالة | Route / Implementation | النواقص |
@@ -575,7 +573,7 @@ final class CheckoutController extends Controller
 | 15 | **Settings** | 🔴 **0%** | — | user app settings API missing |
 | 16 | **Admin** | ✅ **88%** | **Blade admin panel**: products, categories, orders, customers, employees, reports | web not API |
 
-**Overall Feature Completeness: ~83%** *(كان ~77% — Admin panel discovered)*
+**Overall Feature Completeness: ~83%**
 
 ### 13.2 Admin Panel (NEW)
 

@@ -788,8 +788,6 @@ public function test_login_fails_with_wrong_password(): void
 
 > **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
 
-**تاريخ التحديث:** 5 يوليو 2026 — بعد `git pull` من آخر commit على remote لكل مشروع. — branch `auth-branch` (merged category-branch).
-
 **ملاحظة:** Routes كاملة تقريبًا — لكن **`client` middleware لسه غير مسجّل** و `cart_items` migration stub.
 
 ### 13.1 Feature Matrix
@@ -813,9 +811,9 @@ public function test_login_fails_with_wrong_password(): void
 | 15 | **Settings** | 🔴 **0%** | — | — |
 | 16 | **Admin** | ✅ **85%** | dashboard, users, orders, meals | ingredients partial |
 
-**Overall Feature Completeness: ~68%** *(نفس النطاق — blockers لم تُصلَح بعد)*
+**Overall Feature Completeness: ~68%**
 
-### 13.2 Critical Blockers (unchanged)
+### 13.2 Critical Blockers
 
 | المشكلة | Impact |
 |---------|--------|

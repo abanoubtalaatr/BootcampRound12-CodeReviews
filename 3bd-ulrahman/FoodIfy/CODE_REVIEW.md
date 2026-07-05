@@ -524,8 +524,6 @@ final class AuthController extends Controller
 
 > **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
 
-**تاريخ التحديث:** 5 يوليو 2026 — بعد `git pull` من آخر commit على remote لكل مشروع.
-
 **ملاحظة:** بعد pull (+23 commits) — Meals + Cart + Orders APIs **اتضافوا**. لسه ناقص Favorites, Notifications, Settings, Admin, Payment gateway.
 
 ### 13.1 Feature Matrix
@@ -537,7 +535,7 @@ final class AuthController extends Controller
 | 3 | **Profile** | 🔴 **20%** | — | no profile update route |
 | 4 | **Categories** | ✅ **90%** | `apiResource categories` | writes بدون admin guard |
 | 5 | **Category Details** | ✅ **85%** | `GET /api/categories/{id}` | — |
-| 6 | **Meals** | ✅ **90%** | `apiResource meals` | **جديد بعد pull** |
+| 6 | **Meals** | ✅ **90%** | `apiResource meals` | ✅ |
 | 7 | **Meal Details** | ✅ **95%** | `GET /api/meals/{meal}` | — |
 | 8 | **Favorites** | 🔴 **0%** | — | schema exists, **no routes** |
 | 9 | **Cart** | 🟡 **85%** | `cart-items` apiResource + clear cart | **جديد** |
@@ -549,9 +547,9 @@ final class AuthController extends Controller
 | 15 | **Settings** | 🔴 **0%** | — | — |
 | 16 | **Admin** | 🔴 **0%** | — | — |
 
-**Overall Feature Completeness: ~54%** *(كان ~26% قبل pull)*
+**Overall Feature Completeness: ~54%**
 
-### 13.2 Route Map (بعد pull)
+### 13.2 Route Map
 
 ```
 /api/meals (apiResource)              ✅ NEW

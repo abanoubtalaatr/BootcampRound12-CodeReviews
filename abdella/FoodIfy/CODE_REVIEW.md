@@ -537,8 +537,6 @@ final class LoginController extends Controller
 
 > **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
 
-**تاريخ التحديث:** 5 يوليو 2026 — بعد `git pull` من آخر commit على remote لكل مشروع.
-
 **ملاحظة:** بعد pull (+5 commits) — المشروع **تطور جذريًا** من auth-only إلى API شبه كامل مع Stripe payment methods.
 
 ### 13.1 Feature Matrix
@@ -562,7 +560,7 @@ final class LoginController extends Controller
 | 15 | **Settings** | 🔴 **0%** | — | — |
 | 16 | **Admin** | 🔴 **0%** | — | — |
 
-**Overall Feature Completeness: ~70%** *(كان ~10% — تحليل قديم على نسخة auth-only)*
+**Overall Feature Completeness: ~70%**
 
 ### 13.2 Route Map
 
