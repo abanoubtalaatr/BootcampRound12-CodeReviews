@@ -3,8 +3,10 @@
 > **الهدف:** Controllers رفيعة تمامًا — بدون validation وبدون business logic.  
 > كل المنطق في Actions / Services / Repositories مع تطبيق SOLID في كل الطبقات.
 
-**تاريخ المراجعة:** 29 يونيو 2026   (تحديث — Feature Completeness)
-**النطاق:** `app/` — Auth (مُنفَّذ) + باقي الـ modules (scaffold فقط)
+**تاريخ المراجعة:** 5 يوليو 2026  
+**الطالب:** Elham (Elham Samir)  
+**المستودع:** [ElhamSamir151196/FoodIfy](https://github.com/ElhamSamir151196/FoodIfy.git)  
+**النطاق:** `app/` — Auth + Catalog + Cart + Orders + Paymob + Favorites + Profile + Notifications + Admin
 
 ---
 
@@ -12,91 +14,94 @@
 
 | المنطقة | الحالة | التقييم |
 |---------|--------|---------|
-| Auth Module | مُنفَّذ جزئيًا | 🟡 جيد كبداية، يحتاج refactor |
-| Form Requests (Auth) | موجود | ✅ |
-| Actions (Auth) | موجود | 🟡 يحتاج DTOs وتحسينات |
-| Repositories | `UserRepository` فقط | 🔴 بدون Interface |
-| Services | `OtpService` فقط | 🟡 بدون Interface |
-| باقي Controllers | scaffold فارغ | 🔴 غير جاهز للتنفيذ |
-| Models (Meal, Order, …) | فارغة | 🔴 |
-| SOLID Compliance | جزئي | 🟡 |
+| Auth Module | مُنفَّذ بالكامل | ✅ Actions + Form Requests |
+| OTP / SMS | Vonage + multi-gateway switch | ✅ `SmsGatewayInterface` |
+| Reset Password | OTP cache flow | ✅ |
+| Form Requests | ~25 request class | ✅ تغطية واسعة |
+| Actions Layer | ~45 Action class | ✅ **أفضل في الـ Bootcamp** |
+| Repositories | 9 repositories | 🟡 بدون Interfaces (ما عدا SMS) |
+| API Resources | 12 Resource class | ✅ |
+| `ApiResponse` Trait | موجود | ✅ envelope موحّد |
+| Catalog (Category/Meal) | مُنفَّذ | ✅ ~95% |
+| Cart | Actions موجودة | 🔴 **schema مكسور — runtime fail** |
+| Orders + Checkout | Actions موجودة | 🔴 **`client` middleware غير مسجّل** |
+| Paymob Payment | HMAC + callback | 🟡 كود ممتاز — blocked |
+| Payment Methods | Actions موجودة | 🔴 **`PaymentMethodRepository` مفقود** |
+| Favorites | مُنفَّذ | ✅ |
+| Profile | مُنفَّذ | ✅ change-password + avatar |
+| Notifications | مُنفَّذ | 🟡 Actions في مسار PSR-4 خاطئ |
+| Settings | غير موجود | 🔴 **0%** |
+| Admin API | Dashboard + CRUD جزئي | ✅ ~85% |
+| Feature Tests | scaffold فقط | 🔴 |
+| PSR-4 / Folder Structure | مخالفات متعددة | 🔴 |
+| SOLID Compliance | جيد نسبيًا | 🟢 أفضل معمارية في المجموعة |
 
-**الخلاصة:** مسار Auth صحيح في الفكرة (Request → Action → Response)، لكن الـ `AuthController` ما زال فيه **conditional logic** و**token handling** يجب نقلهم. باقي الـ controllers لو اتنفّذت بالشكل الحالي (`Request $request` + logic داخل الـ method) هتكسر المعمارية المطلوبة.
+**الخلاصة:** Elham بنت **أقوى معمارية Actions/Repositories في الـ Bootcamp** — Form Requests، API Resources، Enums، وطبقة Actions شبه كاملة على كل الـ modules. الكود يقرأ كمشروع production-ready من ناحية التنظيم. لكن **3 blockers حرجة** تمنع تشغيل الـ runtime flow الأساسي: (1) middleware `client` مستخدم في routes وغير موجود/غير مسجّل في `bootstrap/app.php`، (2) schema الـ Cart مكسور (تعارض `Cart` vs `CartItem` + migrations مكررة/stub)، (3) `PaymentMethodRepository` مُستدعى في Actions لكن الملف غير موجود. بالإضافة لـ PSR-4 violations قد تكسر autoload على Linux.
+
+**Overall Feature Completeness: ~68%**
 
 ---
 
-## 2. المعمارية المستهدفة (Target Architecture)
+## 2. المعمارية المستهدفة vs الحالية
 
 ```
-HTTP Request
-    │
-    ▼
-Form Request          ← Validation + Authorization فقط
-    │
-    ▼
-Controller            ← يستدعي Action/Service ويرجع Response فقط (zero logic)
-    │
-    ▼
-Action / Service      ← Business Logic (use case واحد)
-    │
-    ▼
-Repository            ← Database access فقط (عبر Interface)
-    │
-    ▼
-Model / Eloquent
+المستهدف:  FormRequest → Controller → Action → Service → RepositoryInterface → Model
+
+Elham:     FormRequest → Controller → Action → Repository (concrete) → Model  (~85%)
+                              ↑ thin في معظم modules ✅
+                              ↑ conditional logic في AuthController 🟡
 ```
 
 ### قواعد الـ Controller (إلزامية)
 
 ```php
-// ✅ Controller مثالي — لا if/else، لا validation، لا DB، لا Hash
-public function store(StoreMealRequest $request, StoreMealAction $action): JsonResponse
+// ✅ الوضع الحالي في CartController — مثالي
+public function store(AddToCartRequest $request, AddToCartAction $action, GetCartAction $getCart): JsonResponse
 {
-    return $this->respond(
-        $action->execute($request->toDto())
-    );
+    $action->execute($request->user()->id, $request->meal_id, $request->quantity);
+    $cart = $getCart->execute($request->user()->id);
+    return $this->success(data: [...], message: 'Item added to cart.', statusCode: 201);
 }
 
-// ❌ ممنوع في Controller
-$request->validate([...]);           // validation
-if (!$user) { ... }                  // business logic
-User::create($data);                 // database access
-Hash::make($password);               // transformation logic
-$result['reason'] === 'inactive'    // decision mapping
+// ❌ الوضع الحالي في AuthController — conditional logic
+if (!$result['verified']) {
+    $message = $result['reason'] === 'session_expired' ? '...' : '...';
+    return $this->error($message, 422);
+}
 ```
 
-### هيكل المجلدات المقترح
+### هيكل المجلدات (الحالي vs المطلوب)
 
 ```
 app/
-├── Actions/
+├── Actions/                    ← ✅ ~45 class — الأفضل في Bootcamp
 │   ├── Auth/
-│   ├── Meal/
+│   ├── Cart/
 │   ├── Order/
-│   └── Cart/
-├── Contracts/                    ← Interfaces (DIP)
-│   ├── Repositories/
-│   └── Services/
-├── DTOs/                         ← Data Transfer Objects
-│   ├── Auth/
-│   └── Meal/
-├── Enums/
-├── Exceptions/                   ← Domain exceptions
-│   └── Auth/
-├── Http/
-│   ├── Controllers/Api/          ← PascalCase: Api وليس api
-│   ├── Middleware/
-│   ├── Requests/
-│   │   ├── Auth/
-│   │   ├── Meal/
-│   │   └── Order/
-│   └── Resources/
-├── Models/
-├── Repositories/
-│   └── Eloquent/
+│   ├── Payment/
+│   ├── PaymentMethod/        ← 🔴 يعتمد على repo مفقود
+│   └── Admin/
+├── Contracts/
+│   └── SmsGatewayInterface   ← ✅ الوحيد المربوط
+│   └── Repositories/         ← ❌ مفقود — كل repos concrete
+├── Repositories/             ← ✅ 9 classes — بدون interfaces
+│   ├── CartRepository        ← يستخدم CartItem model
+│   ├── OrderRepository
+│   └── PaymentMethodRepository ← ❌ الملف غير موجود!
 ├── Services/
-└── Support/
-    └── Responders/               ← يحوّل Action Result → JsonResponse
+│   ├── OtpService            ← ✅
+│   ├── PaymobService         ← ✅ HMAC verification
+│   └── Sms/                  ← ✅ 5 gateways
+├── Http/
+│   ├── Controllers/api/      ← 🔴 lowercase — PSR-4 violation
+│   │   └── Auth/             ← namespace يقول Api لكن المجلد api
+│   ├── Requests/             ← ✅ منظّمة بالـ module
+│   └── Resources/            ← ✅ 12 resources
+├── Notifications/            ← 🔴 Actions هنا بـ namespace Actions\Notification
+│   ├── GetNotificationsAction.php
+│   └── MarkNotificationAsReadAction.php
+└── Traits/
+    └── ApiResponse.php       ← ✅
 ```
 
 ---
@@ -105,682 +110,542 @@ app/
 
 ### S — Single Responsibility Principle
 
-| الملف | المشكلة | الحل |
-|-------|---------|------|
-| `AuthController` | يقرر الرسائل، status codes، ويحذف tokens | `AuthResponder` + `LogoutAction` |
-| `OtpService` | يرسل SMS + يخزّن OTP + يتحقق + يدير reset state | تقسيم: `OtpGenerator`, `OtpStorage`, `SmsGateway` |
-| `LoginAction` | login + token revocation + token creation | `TokenService` منفصل |
+| الملف | الحالة |
+|-------|--------|
+| `CartController`, `OrderController`, `ProfileController` | ✅ thin — delegate للـ Actions |
+| `AuthController` | 🟡 conditional logic + status code mapping |
+| `OtpService` | 🟡 send + verify + cache keys في class واحد |
+| `PaymobService` | 🟡 auth + order + payment key + HMAC + callback |
 
 ### O — Open/Closed Principle
 
-| المشكلة | الحل |
-|---------|------|
-| `OtpService` مربوط بـ Vonage مباشرة | `SmsGatewayInterface` + `VonageSmsGateway` |
-| `UserRepository` concrete class | `UserRepositoryInterface` — تقدر تضيف Redis cache layer بدون تعديل Actions |
+| الإيجابي | السلبي |
+|---------|--------|
+| `SmsGatewayInterface` + 5 implementations + `SmsServiceProvider` match | Repositories كلها concrete — لا swap في tests |
+| Enums لـ `OrderStatus`, `PaymentStatus`, `UserRole` | Payment gateway مربوط بـ Paymob فقط |
 
 ### L — Liskov Substitution Principle
 
-- أي `Repository` يطبّق الـ Interface لازم يكون قابل للاستبدال في الـ tests بـ `InMemoryUserRepository`.
-- الـ Actions تعتمد على الـ Interface مش الـ implementation.
+- Repositories بدون interfaces — لا substitution ممكن في unit tests.
+- `CartItem` model فارغ بينما `CartRepository` يتوقع `user_id`, `meal_id`, `quantity` — contract مكسور.
 
 ### I — Interface Segregation Principle
 
-```php
-// ❌ Interface ضخم
-interface UserRepositoryInterface {
-    public function create(...);
-    public function findByPhone(...);
-    public function updatePassword(...);
-    public function getOrders(...);      // مش مسؤولية User repo
-}
-
-// ✅ Interfaces صغيرة ومركّزة
-interface CreatesUsers { public function create(array $data): User; }
-interface FindsUsersByPhone { public function findByPhone(string $phone): ?User; }
-```
-
-> **عمليًا:** interface واحد لكل Repository كافي في مشروع بحجم FoodIfy، لكن لا تخلط مسؤوليات (مثلاً Order logic داخل UserRepository).
+- `SmsGatewayInterface` صغير ومركّز ✅
+- يُنصح بـ interface واحد لكل Repository (عمليًا كافي لمشروع FoodIfy).
 
 ### D — Dependency Inversion Principle
 
 | الوضع الحالي | المطلوب |
 |--------------|---------|
-| Actions تعتمد على `UserRepository` (concrete) | تعتمد على `UserRepositoryInterface` |
-| `OtpService` ينشئ `Vonage\Client` داخليًا | يُحقَن عبر `SmsGatewayInterface` |
-| `AppServiceProvider::register()` فارغ | يربط كل Interface → Implementation |
-
-```php
-// AppServiceProvider.php
-$this->app->bind(UserRepositoryInterface::class, UserRepository::class);
-$this->app->bind(SmsGatewayInterface::class, VonageSmsGateway::class);
-```
+| Actions → concrete `UserRepository`, `CartRepository`, … | `*RepositoryInterface` + bindings |
+| `SmsGatewayInterface` مربوط في `SmsServiceProvider` ✅ | نفس النمط لباقي الـ repos |
+| `AppServiceProvider::register()` فارغ | DI bindings لكل interface |
+| `PaymentMethodRepository` مُحقَن لكن غير موجود | 🔴 **fatal autoload error** |
 
 ---
 
 ## 4. مراجعة ملف بملف
 
-### 4.1 `AuthController` — 🟡 يحتاج Refactor
+### 4.1 `AuthController` — 🟡
 
-**الإيجابيات:**
-- يستخدم `FormRequest` للـ validation ✅
-- يحقن `Action` classes ✅
-- يستخدم `UserResource` ✅
-
-**المخالفات (Logic داخل Controller):**
-
-| Method | المشكلة | السطر |
-|--------|---------|-------|
-| `verifyRegister` | `if (!$result['verified'])` + mapping `reason` → message | 41–47 |
-| `login` | `if (!$result['success'])` + status code decision | 61–68 |
-| `verifyResetOtp` | `if (!$action->execute(...))` | 88–90 |
-| `resetPassword` | `if (!$action->execute(...))` | 98–100 |
-| `logout` | `$request->user()->currentAccessToken()->delete()` — DB logic | 108 |
-| `me` | مقبول تقريبًا، لكن الأفضل `GetAuthenticatedUserAction` | 114–118 |
-
-**الشكل المستهدف:**
-
-```php
-public function login(LoginRequest $request, LoginAction $action): JsonResponse
-{
-    return $this->authResponder->login($action->execute($request->toDto()));
-}
-
-public function logout(LogoutAction $action): JsonResponse
-{
-    return $this->authResponder->logout($action->execute(auth()->user()));
-}
-```
-
-**ملاحظة:** الـ `if/else` واختيار الـ HTTP status code ينتقلوا لـ:
-- **Option A:** `AuthResponder` (طبقة presentation)
-- **Option B:** Domain Exceptions (`InvalidCredentialsException` → Handler يحوّلها لـ 401)
-
----
-
-### 4.2 Form Requests (Auth) — ✅ جيد
-
-| Request | الحالة | ملاحظات |
-|---------|--------|---------|
-| `RegisterRequest` | ✅ | أضف `messages()` و `attributes()` للـ API errors |
-| `LoginRequest` | ✅ | — |
-| `ForgetPasswordRequest` | ✅ | `exists:users,phone` — صح |
-| `VerifyOtpRequest` | ✅ | — |
-| `ResetPasswordRequest` | ✅ | — |
-
-**تحسين مقترح — DTO method في كل Request:**
-
-```php
-// RegisterRequest.php
-public function toDto(): RegisterData
-{
-    return new RegisterData(
-        fullName: $this->validated('full_name'),
-        phone: $this->validated('phone'),
-        email: $this->validated('email'),
-        password: $this->validated('password'),
-        address: $this->validated('address'),
-        birthDate: $this->validated('birth_date'),
-    );
-}
-```
-
-> الـ Action يستقبل `RegisterData` مش `array` — type safety + IDE support.
-
----
-
-### 4.3 Actions (Auth)
-
-#### `LoginAction` — 🟡
-
-**مشاكل:**
-- يرجع `array` بدل DTO/Result object
-- `$user->tokens()->delete()` — token logic يجب يكون في `TokenService`
-- الـ Controller يفهم `reason` keys — coupling
-
-**المستهدف:**
-
-```php
-// app/DTOs/Auth/LoginResult.php
-readonly class LoginResult
-{
-    public function __construct(
-        public bool $success,
-        public ?User $user = null,
-        public ?string $token = null,
-        public ?LoginFailureReason $reason = null,
-    ) {}
-}
-
-// LoginAction.php
-public function execute(LoginData $data): LoginResult
-```
-
-#### `VerifyRegisterOtpAction` — 🟡
-
-**مشاكل:**
-- `Hash::make($data['password'])` **مكرر** — الـ `User` model عنده `'password' => 'hashed'` cast، فـ `Hash::make` هنا = double hashing
-- `$user->createToken()` — ينقل لـ `TokenService`
-
-```php
-// ❌ الحالي — double hash
-'password' => Hash::make($data['password']),
-
-// ✅ الصح
-'password' => $data['password'],  // الـ cast يتولى الـ hashing
-```
-
-#### `RegisterAction` — ✅
-
-- مسؤولية واحدة: cache pending data + send OTP
-
-#### `ForgetPasswordAction` — 🟡
-
-- لا يتحقق إن الـ phone موجود (الـ Request يعمل `exists` في forget flow بس مش هنا)
-- لا يفرق بين user موجود ومش موجود (security: لا تكشف إن الـ phone مش مسجّل)
-
-#### `ResetPasswordAction` — ✅
-
-- منطق واضح، لكن يرجع `bool` — الأفضل exception أو Result DTO
-
-#### `VerifyResetOtpAction` — ✅
-
-- thin wrapper — مقبول
-
-#### Actions ناقصة:
-
-| Action | الغرض |
-|--------|-------|
-| `LogoutAction` | revoke current token |
-| `GetAuthenticatedUserAction` | fetch + eager load relations |
-
----
-
-### 4.4 `UserRepository` — 🟡
-
-**إيجابيات:** يفصل DB access عن Actions ✅
-
-**مشاكل:**
-- لا Interface (DIP violation)
-- `User::where()` مباشرة — انقل لـ Eloquent implementation
-- لا methods للـ: `existsByPhone`, `markPhoneVerified`
-
-```php
-// app/Contracts/Repositories/UserRepositoryInterface.php
-interface UserRepositoryInterface
-{
-    public function create(array $data): User;
-    public function findByPhone(string $phone): ?User;
-    public function updatePassword(string $phone, string $password): void;
-    public function existsByPhone(string $phone): bool;
-}
-```
-
----
-
-### 4.5 `OtpService` — 🟡
-
-**مشاكل:**
-
-| # | المشكلة | الخطورة |
-|---|---------|---------|
-| 1 | `rand(1000, 9999)` — weak randomness | 🔴 أمني |
-| 2 | Vonage client في `__construct` — hard to test | 🟡 |
-| 3 | SMS + Cache + Verification في class واحد | 🟡 SRP |
-| 4 | OTP expires in 1 minute — قصير جدًا لـ UX | 🟡 |
-
-**المستهدف:**
-
-```php
-// استخدم
-$otp = str_pad((string) random_int(0, 9999), 4, '0', STR_PAD_LEFT);
-
-// وفصّل
-interface SmsGatewayInterface {
-    public function send(string $to, string $message): void;
-}
-```
-
----
-
-### 4.6 Controllers الأخرى — 🔴 غير جاهزة
-
-الملفات التالية scaffold من `php artisan make:controller --resource`:
-
-- `CartController`, `CartItemController`
-- `OrderController`, `OrderItemController`
-- `MealController`, `CategoryController`
-- `FavoriteController`, `PaymentMethodController`
-- `DeliveryRiderController`
-
-**مشاكل التصميم الحالي:**
-
-| # | المشكلة |
-|---|---------|
-| 1 | `Request $request` — الـ validation هتتحط في Controller لما يتنفّذ |
-| 2 | `create()` و `edit()` — غير مطلوبة في API (للـ Blade فقط) |
-| 3 | لا Actions ولا Services ولا Repositories |
-| 4 | Namespace `api` lowercase — المفروض `Api` (PSR-4) |
-
-**قاعدة الـ Controllers الفاضية (إلزامية):**
-
-> **لا تضع أي تعليقات على الـ controller الفاضي** — لا PHPDoc، لا `//` داخل الـ methods، ولا تعليقات على الـ imports.  
-> الـ scaffold يفضل يفضل **نظيف وفاضي** لحد ما يتنفّذ الـ endpoint فعليًا.  
-> أول ما الـ method يتملّى، وقتها بس تضيف الكود الحقيقي (FormRequest + Action + return).
-
-```php
-// ✅ Controller فاضي — بدون تعليقات
-class MealController extends Controller
-{
-    public function index()
-    {
-    }
-
-    public function store(StoreMealRequest $request, StoreMealAction $action): JsonResponse
-    {
-        return $this->responder->created($action->execute($request->toDto()));
-    }
-}
-
-// ❌ ممنوع على controller فاضي
-/**
- * Display a listing of the resource.
- */
-public function index()
-{
-    // TODO: implement later
-}
-```
-
-**قبل التنفيذ — أنشئ لكل module:**
-
-```
-Meal/
-├── StoreMealRequest.php
-├── UpdateMealRequest.php
-├── StoreMealAction.php
-├── UpdateMealAction.php
-├── DeleteMealAction.php
-├── ListMealsAction.php
-├── MealRepositoryInterface.php
-├── MealRepository.php
-├── MealResource.php
-└── MealController.php          ← thin فقط
-```
-
-**Controller مثالي لـ Meal:**
-
-```php
-class MealController extends Controller
-{
-    use ApiResponse;
-
-    public function __construct(private readonly MealResponder $responder) {}
-
-    public function index(ListMealsRequest $request, ListMealsAction $action): JsonResponse
-    {
-        return $this->responder->paginated($action->execute($request->toDto()));
-    }
-
-    public function store(StoreMealRequest $request, StoreMealAction $action): JsonResponse
-    {
-        return $this->responder->created($action->execute($request->toDto()));
-    }
-
-    public function show(Meal $meal, ShowMealAction $action): JsonResponse
-    {
-        return $this->responder->single($action->execute($meal));
-    }
-
-    public function update(UpdateMealRequest $request, Meal $meal, UpdateMealAction $action): JsonResponse
-    {
-        return $this->responder->single($action->execute($meal, $request->toDto()));
-    }
-
-    public function destroy(Meal $meal, DeleteMealAction $action): JsonResponse
-    {
-        return $this->responder->deleted($action->execute($meal));
-    }
-}
-```
-
----
-
-### 4.7 Models — 🔴
-
-| Model | الحالة | المطلوب |
-|-------|--------|---------|
-| `User` | ✅ جيد | أضف return types للـ relationships |
-| `Meal` | فارغ | fillable, casts, relationships, scopes |
-| `Order` | فارغ | + migration فيها columns معلّقة |
-| `Category` | فارغ | — |
-| `Cart`, `CartItem` | فارغ | — |
-| `Favorite` | فارغ | — |
-| `PaymentMethod` | فارغ | — |
-| `DeliveryRider` | فارغ | — |
-| `OrderItem` | فارغ | — |
-| `PaymentTransaction` | فارغ | — |
-
-**مثال `Meal` model:**
-
-```php
-class Meal extends Model
-{
-    protected $fillable = [
-        'category_id', 'name', 'description', 'price',
-        'calories', 'carbs', 'protein', 'fat', 'fiber', 'sugar', 'sodium',
-        'address', 'location', 'working_hours', 'is_available',
-    ];
-
-    protected $casts = [
-        'price'          => 'decimal:2',
-        'working_hours'  => 'array',
-        'is_available'   => 'boolean',
-    ];
-
-    public function category(): BelongsTo
-    {
-        return $this->belongsTo(Category::class);
-    }
-
-    public function scopeAvailable($query)
-    {
-        return $query->where('is_available', true);
-    }
-}
-```
-
-> **قاعدة:** الـ Model فيه relationships + scopes + casts فقط. لا business logic (حساب total order مثلاً → `OrderService`).
-
----
-
-### 4.8 Middleware — 🟡
-
-#### `EnsureIsActive`
-
-```php
-// ❌ response format مختلف عن ApiResponse trait
-return response()->json(['message' => '...'], 403);
-
-// ✅ وحّد الشكل
-return response()->json([
-    'status'  => false,
-    'message' => 'Your account has been deactivated.',
-    'errors'  => null,
-], 403);
-```
-
-> **أفضل:** `InactiveAccountException` + `bootstrap/app.php` exception handler.
-
-#### `EnsureIsAdmin`
-
-- يستخدم `abort_if` — مقبول
-- `EnsureIsClient` middleware **مفقود** (مذكور في routes لكن غير موجود)
-
----
-
-### 4.9 `ApiResponse` Trait — ✅
-
-- جيد كـ base
-- **تحسين:** اعمل `Responder` classes بدل ما كل controller يختار message/status يدوي
-
----
-
-### 4.10 `routes/api.php` — 🟡
-
-- Auth routes شغالة ✅
-- باقي routes معلّقة في comment block
-- فيه **duplicate commented code** — احذفه
-- لما تفعّل routes: استخدم `apiResource` بدون `create` و `edit`:
-
-```php
-Route::apiResource('meals', MealController::class)->except(['create', 'edit']);
-```
-
----
-
-### 4.11 `AppServiceProvider` — 🔴
-
-```php
-public function register(): void
-{
-    $this->app->bind(UserRepositoryInterface::class, UserRepository::class);
-    $this->app->bind(SmsGatewayInterface::class, VonageSmsGateway::class);
-    // ... باقي bindings
-}
-```
-
----
-
-### 4.12 Database / Migrations — 🟡
-
-- `orders` migration: كل الـ columns **معلّقة** — الـ Order model مش هيشتغل
-- تأكد إن كل foreign keys مفعّلة قبل بناء Repositories
-
----
-
-## 5. خطة Refactor — Auth Module (الأولوية)
-
-### المرحلة 1 — Quick Wins
-
-- [ ] إصلاح double hashing في `VerifyRegisterOtpAction`
-- [ ] إنشاء `LogoutAction` و `GetAuthenticatedUserAction`
-- [ ] نقل token logic لـ `TokenService`
-- [ ] حذف الـ commented code من `routes/api.php`
-
-### المرحلة 2 — إزالة Logic من Controller
-
-- [ ] إنشاء `LoginResult`, `VerifyOtpResult` DTOs
-- [ ] إنشاء `AuthResponder` (أو استخدام Exceptions)
-- [ ] refactor `AuthController` ليكون thin بالكامل
-
-### المرحلة 3 — SOLID Infrastructure
-
-- [ ] `UserRepositoryInterface` + binding
-- [ ] `SmsGatewayInterface` + `VonageSmsGateway`
-- [ ] `random_int` بدل `rand` في OTP
-- [ ] توحيد error response format (Middleware + Exception Handler)
-
-### المرحلة 4 — AuthController النهائي (Target)
-
-```php
-<?php
-
-namespace App\Http\Controllers\Api\Auth;
-
-use App\Actions\Auth\ForgetPasswordAction;
-use App\Actions\Auth\GetAuthenticatedUserAction;
-use App\Actions\Auth\LoginAction;
-use App\Actions\Auth\LogoutAction;
-use App\Actions\Auth\RegisterAction;
-use App\Actions\Auth\ResetPasswordAction;
-use App\Actions\Auth\VerifyRegisterOtpAction;
-use App\Actions\Auth\VerifyResetOtpAction;
-use App\Http\Controllers\Controller;
-use App\Http\Requests\Auth\ForgetPasswordRequest;
-use App\Http\Requests\Auth\LoginRequest;
-use App\Http\Requests\Auth\RegisterRequest;
-use App\Http\Requests\Auth\ResetPasswordRequest;
-use App\Http\Requests\Auth\VerifyOtpRequest;
-use App\Support\Responders\AuthResponder;
-use Illuminate\Http\JsonResponse;
-
-class AuthController extends Controller
-{
-    public function __construct(private readonly AuthResponder $responder) {}
-
+```26:54:app/Http/Controllers/api/Auth/AuthController.php
     public function register(RegisterRequest $request, RegisterAction $action): JsonResponse
     {
-        $action->execute($request->toDto());
-        return $this->responder->otpSent();
+        $action->execute($request->validated());
+        return $this->success(message: 'OTP sent. Please verify your phone number.');
     }
 
     public function verifyRegister(VerifyOtpRequest $request, VerifyRegisterOtpAction $action): JsonResponse
     {
-        return $this->responder->authenticated($action->execute($request->toDto()));
+        $result = $action->execute($request->phone, $request->otp);
+        if (!$result['verified']) {
+            // ... conditional mapping
+        }
     }
-
-    public function login(LoginRequest $request, LoginAction $action): JsonResponse
-    {
-        return $this->responder->login($action->execute($request->toDto()));
-    }
-
-    public function forgetPassword(ForgetPasswordRequest $request, ForgetPasswordAction $action): JsonResponse
-    {
-        $action->execute($request->validated('phone'));
-        return $this->responder->otpSent();
-    }
-
-    public function verifyResetOtp(VerifyOtpRequest $request, VerifyResetOtpAction $action): JsonResponse
-    {
-        return $this->responder->otpVerified($action->execute($request->toDto()));
-    }
-
-    public function resetPassword(ResetPasswordRequest $request, ResetPasswordAction $action): JsonResponse
-    {
-        return $this->responder->passwordReset($action->execute($request->toDto()));
-    }
-
-    public function logout(LogoutAction $action): JsonResponse
-    {
-        $action->execute(auth()->user());
-        return $this->responder->loggedOut();
-    }
-
-    public function me(GetAuthenticatedUserAction $action): JsonResponse
-    {
-        return $this->responder->user($action->execute(auth()->user()));
-    }
-}
 ```
+
+| # | المشكلة | التفاصيل |
+|---|---------|----------|
+| 1 | Conditional logic في controller | `verifyRegister`, `login`, `verifyResetOtp`, `resetPassword` |
+| 2 | `logout` — token delete في controller | يحتاج `LogoutAction` |
+| 3 | PSR-4 path | ملف في `Controllers/api/` لكن namespace `Controllers\Api` |
+| 4 | `routes/auth.php` import | `App\Http\Controllers\api\Auth\AuthController` (lowercase) |
+
+**إيجابي:** Form Requests + Actions + `UserResource` ✅
 
 ---
 
-## 6. خطة التنفيذ — باقي الـ Modules
+### 4.2 `VerifyRegisterOtpAction` — 🟡
 
-### ترتيب الأولوية
-
-| # | Module | السبب |
-|---|--------|-------|
-| 1 | Category | بسيط — CRUD أساسي، مفيش business logic معقّد |
-| 2 | Meal | يعتمد على Category |
-| 3 | Favorite | يعتمد على Meal + User |
-| 4 | Cart / CartItem | business logic (quantities, totals) |
-| 5 | Order / OrderItem | أعقد — transactions, status workflow |
-| 6 | PaymentMethod / PaymentTransaction | تكامل خارجي |
-| 7 | DeliveryRider | admin + assignment logic |
-
-### Checklist لكل Endpoint جديد
-
+```29:34:app/Actions/Auth/VerifyRegisterOtpAction.php
+        $user  = $this->users->create([
+            ...$data,
+            'password' => Hash::make($data['password']),
+            'phone_verified_at' => now(),
+        ]);
 ```
-□ Form Request (validation + authorize + toDto)
-□ DTO class
-□ Action class (business logic)
-□ Repository Interface + Implementation (لو في DB)
-□ API Resource (response transformation)
-□ Responder method (أو exception mapping)
-□ Controller method (سطرين: execute + respond)
-□ Feature Test
-□ Route registration
-```
+
+| المشكلة | السبب |
+|---------|-------|
+| **Double hashing** | `User` model عنده `'password' => 'hashed'` cast + `Hash::make()` هنا |
+
+**الإصلاح:** `'password' => $data['password']` — الـ cast يتولى الـ hashing.
 
 ---
 
-## 7. Exception-Based Error Handling (بديل الـ if/else)
+### 4.3 `OtpService` — 🟡
 
-```php
-// app/Exceptions/Auth/InvalidCredentialsException.php
-class InvalidCredentialsException extends Exception {}
+```29:36:app/Services/OtpService.php
+    public function send(string $phone, string $type = 'register'): void
+    {
+        $otp = (string) rand(1000, 9999);
+        // ...
+        Cache::put($key, $otp, now()->addMinute());
+```
 
-// LoginAction.php
-if (!$user || !Hash::check($password, $user->password)) {
-    throw new InvalidCredentialsException();
-}
+| # | المشكلة | Severity |
+|---|---------|----------|
+| 1 | `rand()` بدل `random_int()` | 🔴 أمني |
+| 2 | OTP expires in 1 minute | 🟡 UX ضعيف |
+| 3 | OTP plain text في Cache | 🟡 يُفضَّل hash |
 
-// bootstrap/app.php
-$exceptions->render(function (InvalidCredentialsException $e) {
-    return response()->json([
-        'status'  => false,
-        'message' => 'The provided credentials are incorrect.',
-        'errors'  => null,
-    ], 401);
+**إيجابي:** `SmsGatewayInterface` injection ✅ — أفضل من معظم المشاريع.
+
+---
+
+### 4.4 Catalog — ✅ ~95%
+
+#### `CategoryController` + `MealController` — ✅
+
+- Public: `GET /categories`, `GET /categories/{id}`, `GET /meals`, `GET /meals/{id}` ✅
+- Admin CRUD: categories + meals + toggle-availability ✅
+- Filters: `category_id`, `search` على meals ✅
+- `MealResource`, `CategoryResource` ✅
+
+#### `IngredientController` (Admin) — 🟡
+
+- `index` + `store` فقط — لا update/delete
+
+---
+
+### 4.5 Cart — 🔴 Critical Schema Broken
+
+#### `CartRepository` — يستخدم `CartItem` model
+
+```17:27:app/Repositories/CartRepository.php
+    public function addItem(int $userId, int $mealId, int $quantity = 1): CartItem
+    {
+        $item = $this->model->firstOrNew([
+            'user_id' => $userId,
+            'meal_id' => $mealId,
+        ]);
+        $item->quantity = $item->exists ? $item->quantity + $quantity : $quantity;
+        $item->save();
+```
+
+#### Migrations — فوضى كاملة
+
+| Migration | المحتوى | المشكلة |
+|-----------|---------|---------|
+| `194298_create_carts_table` | stub: `id` + timestamps فقط | فارغ |
+| `194300_create_cart_items_table` | stub: `id` + timestamps فقط | **لا user_id/meal_id/quantity** |
+| `194300_create_carts_table` | `user_id`, `meal_id`, `quantity` | **تكرار جدول carts** + `down()` يحذف `cart_items` بالخطأ |
+
+#### Models — تعارض
+
+| Model | الحالة |
+|-------|--------|
+| `Cart` | fillable: `user_id`, `meal_id`, `quantity` — pivot-style |
+| `CartItem` | **فارغ تمامًا** — لا fillable ولا relationships |
+| `User::cartItems()` | `hasMany(Cart::class)` |
+| `User::cartMeals()` | `belongsToMany(Meal::class, 'cart_items')` |
+
+**النتيجة:** `CartController` + Actions شغالة معماريًا، لكن **أي عملية cart تفشل على DB** لأن `cart_items` لا يحتوي الأعمدة المطلوبة.
+
+---
+
+### 4.6 Orders + Checkout — 🔴 Runtime Blocked
+
+#### `CheckoutAction` — ✅ منطق صحيح
+
+```19:51:app/Actions/Order/CheckoutAction.php
+    public function execute(int $userId, array $data): ?Order
+    {
+        $cartItems = $this->cart->getByUser($userId);
+        if ($cartItems->isEmpty()) { return null; }
+        // subtotal + DELIVERY_FEE + create order + addItems + clearCart
+    }
+```
+
+#### `OrderController` — ✅ thin
+
+- `index`, `show`, `checkout` — كلها delegate للـ Actions ✅
+
+#### Blocker: `client` middleware
+
+```61:76:routes/api.php
+Route::middleware(['auth:sanctum', 'client'])->group(function () {
+    Route::get('orders',      [OrderController::class, 'index']);
+    Route::post('checkout',   [OrderController::class, 'checkout']);
+    Route::post('orders/{order}/pay', [PaymentController::class, 'initiate']);
+    Route::get('payment-methods', [PaymentMethodController::class, 'index']);
+    // ...
 });
 ```
 
-**فائدة:** الـ Controller يبقى بدون أي `if` — الـ Action يرمي exception والـ Handler يتولى الـ response.
+```15:21:bootstrap/app.php
+    ->withMiddleware(function (Middleware $middleware) {
+        $middleware->alias([
+            'is_admin'  => EnsureIsAdmin::class,
+            'active' => EnsureIsActive::class,
+        ]);
+    })
+```
+
+| المشكلة | التأثير |
+|---------|---------|
+| `EnsureIsClient` middleware **غير موجود** كملف | — |
+| alias `client` **غير مسجّل** في `bootstrap/app.php` | 🔴 **500 error** على orders/checkout/payment/payment-methods |
 
 ---
 
-## 8. Testing Strategy
+### 4.7 Paymob Integration — ✅ ممتاز (معمارياً)
 
-| الطبقة | نوع الاختبار | Mock |
-|--------|-------------|------|
-| Controller | Feature Test | — |
-| Action | Unit Test | Repository Interface |
-| Repository | Integration Test | Database |
-| Service (OTP/SMS) | Unit Test | SmsGatewayInterface |
+#### `PaymobService` — HMAC verification
+
+```120:163:app/Services/PaymobService.php
+    private function verifyHmac(array $data): bool
+    {
+        // ordered fields concatenation + hash_hmac sha512
+        return hash_equals($calculatedHmac, $hmacReceived);
+    }
+```
+
+| الميزة | الحالة |
+|--------|--------|
+| Auth token | ✅ |
+| Create Paymob order | ✅ |
+| Payment key + iframe URL | ✅ |
+| HMAC callback verification | ✅ |
+| Update `PaymentTransaction` + mark order paid | ✅ |
+| `InitiatePaymentAction` + `HandlePaymentCallbackAction` | ✅ thin delegation |
+
+**ملاحظة:** `$order->user->name` في billing — الـ User model يستخدم `full_name` وليس `name` 🟡
+
+---
+
+### 4.8 Payment Methods — 🔴 Repository Missing
+
+```8:17:app/Actions/PaymentMethod/AddPaymentMethodAction.php
+class AddPaymentMethodAction
+{
+    public function __construct(private readonly PaymentMethodRepository $paymentMethods) {}
+    public function execute(int $userId, array $data): PaymentMethod
+    {
+        return $this->paymentMethods->create($data);
+    }
+}
+```
+
+| المشكلة | التفاصيل |
+|---------|----------|
+| `PaymentMethodRepository` | **الملف غير موجود** في `app/Repositories/` |
+| 4 Actions تعتمد عليه | `Add`, `Get`, `Delete`, `SetDefault` — كلها تفشل autoload |
+| Duplicate migration | `194335` (كامل) + `194520` (stub) — `migrate:fresh` يفشل |
+
+---
+
+### 4.9 Profile — ✅ ~100%
+
+| Endpoint | Action | Request |
+|----------|--------|---------|
+| `GET /profile` | `GetProfileAction` | — |
+| `PUT /profile` | `UpdateProfileAction` | `UpdateProfileRequest` |
+| `POST /profile/avatar` | `UpdateAvatarAction` | `UpdateAvatarRequest` |
+| `POST /profile/change-password` | `ChangePasswordAction` | `ChangePasswordRequest` |
+
+**أفضل profile module في Bootcamp** — يتضمن change-password اللي ناقص عند معظم الطلاب.
+
+---
+
+### 4.10 Notifications — 🟡 PSR-4 Violation
+
+```1:17:app/Notifications/GetNotificationsAction.php
+namespace App\Actions\Notification;
+
+class GetNotificationsAction
+{
+    public function __construct(private readonly NotificationRepository $notifications) {}
+```
+
+| المشكلة | التفاصيل |
+|---------|----------|
+| Namespace | `App\Actions\Notification` |
+| File path | `app/Notifications/GetNotificationsAction.php` |
+| PSR-4 | Composer يتوقع `app/Actions/Notification/` |
+
+**نفس المشكلة في:**
+- `MarkNotificationAsReadAction.php`
+- `MarkAllNotificationsAsReadAction.php`
+- `GetUnreadCountAction.php`
+
+**إيجابي:** `NotificationController` thin + `NotificationResource` + mark-all-read ✅
+
+---
+
+### 4.11 Admin Module — ✅ ~85%
+
+| Feature | Route | الحالة |
+|---------|-------|--------|
+| Dashboard stats | `GET /admin/dashboard/stats` | ✅ revenue, orders, users, top meals |
+| Meals CRUD | admin meal routes | ✅ |
+| Categories CRUD | admin category routes | ✅ |
+| Orders management | index, show, status, assign-rider | ✅ |
+| Users management | index, show, toggle-status | ✅ |
+| Ingredients | index + store فقط | 🟡 partial |
+
+#### PSR-4: Duplicate `DashboardController`
+
+- `app/Http/Controllers/api/Admin/DashboardController.php` ✅ (المستخدم فعليًا)
+- `app/Actions/Admin/DashboardController.php` — **نفس الـ namespace** `App\Http\Controllers\Api\Admin` لكن في مجلد Actions!
+
+---
+
+### 4.12 Middleware — 🟡
+
+#### `EnsureIsAdmin` — ✅
+
+- `abort_if(!auth()->user()->isAdmin())` — يعمل مع `is_admin` alias
+
+#### `EnsureIsActive` — 🟡
+
+```13:18:app/Http/Middleware/EnsureIsActive.php
+        return response()->json([
+            'message' => 'Your account has been deactivated.',
+        ], 403);
+```
+
+- Response format مختلف عن `ApiResponse` trait (`status`, `errors` ناقصين)
+
+#### `EnsureIsClient` — 🔴 مفقود
+
+- مستخدم في routes كـ `'client'` — **لا ملف ولا alias**
+
+---
+
+### 4.13 Repositories — 🟡 Best Effort, No Interfaces
+
+| Repository | موجود | Interface | ملاحظات |
+|------------|:-------:|:---------:|---------|
+| `UserRepository` | ✅ | ❌ | admin stats + profile |
+| `MealRepository` | ✅ | ❌ | topSelling |
+| `CategoryRepository` | ✅ | ❌ | — |
+| `CartRepository` | ✅ | ❌ | يعتمد على schema مكسور |
+| `OrderRepository` | ✅ | ❌ | revenue stats |
+| `FavoriteRepository` | ✅ | ❌ | — |
+| `NotificationRepository` | ✅ | ❌ | — |
+| `IngredientRepository` | ✅ | ❌ | — |
+| `PaymentTransactionRepository` | ✅ | ❌ | Paymob integration |
+| `PaymentMethodRepository` | ❌ | ❌ | **مفقود — blocker** |
+
+---
+
+### 4.14 `routes/api.php` — 🟡
+
+- Routes منظّمة في ملفات منفصلة (`auth.php`, `category.php`) ✅
+- **~160 سطر commented duplicate code** في نهاية الملف — يجب حذفها
+- Middleware inconsistency: `'is_admin'` vs commented `'admin'`
+
+---
+
+### 4.15 Database / Migrations — 🔴
+
+| المشكلة | الملفات |
+|---------|---------|
+| Duplicate `carts` table | `194298` + `194300` |
+| `cart_items` stub | `194300_create_cart_items` |
+| Duplicate `payment_methods` | `194335` (كامل) + `194520` (stub) |
+| Duplicate `personal_access_tokens` | `194040` + `205526` |
+| `down()` bug | `194300_create_carts` يحذف `cart_items` بدل `carts` |
+
+---
+
+### 4.16 Tests — 🔴
+
+- `tests/Feature/ExampleTest.php` — scaffold فقط
+- `tests/Unit/ExampleTest.php` — scaffold فقط
+- لا tests لـ auth, cart, checkout, Paymob callback
+
+---
+
+## 5. مشاكل أمنية
+
+| # | المشكلة | الملف | Severity |
+|---|---------|-------|----------|
+| 1 | `rand()` لـ OTP generation | `OtpService:31` | 🔴 |
+| 2 | OTP plain text في Cache | `OtpService` | 🟡 |
+| 3 | OTP expires in 1 minute | `OtpService:36` | 🟡 UX |
+| 4 | Double password hashing | `VerifyRegisterOtpAction:31` | 🔴 |
+| 5 | Paymob callback بدون rate limit | `routes/api.php:79` | 🟡 |
+| 6 | `EnsureIsActive` response format leak | middleware inconsistency | 🟡 low |
+| 7 | لا ownership check على `PaymentController::initiate` | أي user قد يدفع order لغيره | 🟡 |
+| 8 | HMAC verification | `PaymobService` | ✅ ممتاز |
+
+---
+
+## 6. ما هو جيد ✅
+
+1. **أفضل Actions/Repositories architecture في Bootcamp** — ~45 Action + 9 Repository + 25 Form Request.
+2. **Controllers رفيعة** في Cart, Order, Profile, Meal, Category, Payment, Admin — نموذج يُحتذى به.
+3. **API Resources** — 12 resource classes لتحويل الـ responses.
+4. **Enums** — `OrderStatus`, `PaymentStatus`, `UserRole`, `PaymentMethodType`, `TrackingStatus`.
+5. **SmsGatewayInterface** + 5 implementations + provider switch — OCP ممتاز.
+6. **Paymob integration** — auth, payment key, iframe, HMAC callback — production-grade.
+7. **Admin API** — dashboard stats, order management, user toggle, rider assignment.
+8. **Profile كامل** — update, avatar, change-password.
+9. **Notifications** — list, unread count, mark read, mark all read.
+10. **Routes modular** — `auth.php`, `category.php` منفصلة.
+11. **Postman collection** — `Foodify.postman_collection.json` للاختبار اليدوي.
+12. **Phone verification** — `phone_verified_at` على التسجيل.
+
+---
+
+## 7. خطة Refactor
+
+### Sprint 0 — Critical Blockers (P0) — قبل أي feature جديد
+
+1. **إنشاء `EnsureIsClient` middleware** + تسجيل alias `client` في `bootstrap/app.php`
+2. **إصلاح Cart schema:**
+   - احذف migrations المكررة/stub
+   - أنشئ migration واحد لـ `cart_items` بـ `user_id`, `meal_id`, `quantity`
+   - أكمل `CartItem` model (fillable, relationships)
+   - وحّد: إما `Cart` pivot أو `CartItem` — لا الاثنين
+3. **إنشاء `PaymentMethodRepository`** + احذف migration stub المكرر
+4. **إصلاح PSR-4:**
+   - أعد تسمية `Controllers/api/` → `Controllers/Api/`
+   - انقل notification actions لـ `app/Actions/Notification/`
+   - احذف duplicate `DashboardController` من `Actions/Admin/`
+5. **إصلاح double hashing** في `VerifyRegisterOtpAction`
+
+### Sprint 1 — Architecture Polish (P1)
+
+6. Repository Interfaces + bindings في `AppServiceProvider`
+7. `AuthResponder` أو Exception-based handling — إزالة `if/else` من `AuthController`
+8. `LogoutAction` + `GetAuthenticatedUserAction`
+9. `random_int()` بدل `rand()` في OTP
+10. Ownership check على `PaymentController::initiate`
+11. حذف commented code من `routes/api.php`
+
+### Sprint 2 — Completeness (P2)
+
+12. **Settings module** — `GET/PATCH /api/settings`
+13. Admin ingredients CRUD كامل (update/delete)
+14. Feature tests: auth, cart, checkout (mock Paymob)
+15. `PaymobServiceInterface` للـ testability
+16. توحيد middleware response format مع `ApiResponse`
+
+---
+
+## 8. Controller المستهدف (مثال: Checkout — الحالي قريب جدًا)
 
 ```php
-// مثال Unit Test لـ LoginAction
-public function test_login_fails_with_wrong_password(): void
+// ✅ Elham's OrderController — already near-target
+public function checkout(CheckoutRequest $request, CheckoutAction $action): JsonResponse
 {
-    $user = User::factory()->create(['password' => 'password']);
-    
-    $repo = Mockery::mock(UserRepositoryInterface::class);
-    $repo->shouldReceive('findByPhone')->andReturn($user);
-    
-    $tokenService = Mockery::mock(TokenServiceInterface::class);
-    
-    $action = new LoginAction($repo, $tokenService);
-    
-    $this->expectException(InvalidCredentialsException::class);
-    $action->execute(new LoginData(phone: $user->phone, password: 'wrong'));
+    $order = $action->execute($request->user()->id, $request->validated());
+
+    if (!$order) {
+        return $this->error('Your cart is empty.', 422);
+    }
+
+    return $this->success(
+        data: ['order' => new OrderResource($order)],
+        message: 'Order placed successfully.',
+        statusCode: 201
+    );
 }
+
+// 🎯 الخطوة التالية: استبدل if (!$order) بـ EmptyCartException + Handler
 ```
 
 ---
 
-## 9. Code Style & Conventions
+## 9. File-by-File Scorecard
 
-| القاعدة | التفاصيل |
-|---------|----------|
-| Namespace | `App\Http\Controllers\Api` (PascalCase) |
-| Controllers | `final class` — لا تورّث منها |
-| Actions | verb + noun: `StoreMealAction`, `LoginAction` |
-| Requests | `StoreMealRequest`, مش `MealStoreRequest` |
-| DTOs | `readonly class` (PHP 8.2+) |
-| Repositories | Interface في `Contracts/`, Implementation في `Repositories/` |
-| لا تعليقات عربية في الكود | استخدم PHPDoc إنجليزي أو self-documenting names |
-| Controllers فاضية | **بدون أي comments** — لا PHPDoc scaffold ولا `//` ولا TODO لحد التنفيذ |
-| API methods | لا `create()` / `edit()` في API controllers |
+| File | Thin | Form Request | Action/Service | Repository | ApiResponse | Verdict |
+|------|:----:|:------------:|:--------------:|:----------:|:-----------:|---------|
+| `AuthController` | 🟡 | ✅ | ✅ | ✅ | ✅ | 🟡 |
+| `CategoryController` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `MealController` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `CartController` | ✅ | ✅ | ✅ | 🟡 schema | ✅ | 🔴 blocked |
+| `OrderController` | ✅ | ✅ | ✅ | ✅ | ✅ | 🔴 middleware |
+| `PaymentController` | ✅ | — | ✅ Paymob | ✅ | ✅ | 🔴 middleware |
+| `PaymentMethodController` | ✅ | ✅ | ✅ | ❌ missing | ✅ | 🔴 |
+| `FavoriteController` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `ProfileController` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `NotificationController` | ✅ | — | 🟡 PSR-4 | ✅ | ✅ | 🟡 |
+| `Admin/DashboardController` | ✅ | — | ✅ | ✅ | ✅ | ✅ |
+| `Admin/OrderController` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `Admin/UserController` | ✅ | — | ✅ | ✅ | ✅ | ✅ |
+| `PaymobService` | — | — | ✅ | ✅ | — | ✅ |
+| `OtpService` | — | — | 🟡 | — | — | 🟡 |
+| `EnsureIsAdmin` | ✅ | — | — | — | — | ✅ |
+| `EnsureIsClient` | — | — | — | — | — | 🔴 missing |
+| `PaymentMethodRepository` | — | — | — | ❌ | — | 🔴 |
+| Tests | — | — | — | — | — | 🔴 |
 
 ---
 
-## 10. ملخص الأولويات (Action Items)
+## 10. مقارنة مع مشاريع Bootcamp
 
-### 🔴 Critical (اعملها فورًا)
+| المعيار | Elham | Abdella | Mohamed Esmail | Ali |
+|---------|:-----:|:-------:|:--------------:|:---:|
+| Feature completeness | ~68% | ~70% | ~83% | ~76% |
+| Payment gateway | ✅ Paymob+HMAC | ✅ Stripe | 🟡 pending | ✅ checkout |
+| Actions layer | ✅ **الأفضل** | ❌ | ❌ | 🟡 partial |
+| Repositories | ✅ 9 classes | ❌ | 🟡 partial | 🟡 |
+| Form Requests | ✅ ~25 | 🟡 3 | 🟡 partial | ✅ many |
+| API Resources | ✅ 12 | ❌ | 🟡 | ✅ |
+| Admin | ✅ API ~85% | ❌ | ✅ web | 🟡 |
+| Feature tests | ❌ | ❌ | ✅ | ✅ |
+| Runtime blockers | 🔴 3 critical | 🟡 fat controllers | 🟡 | 🟡 |
+| SOLID / Architecture | 🟢 **الأفضل** | 🔴 | 🔴 | 🟡 |
 
-1. إصلاح **double password hashing** في `VerifyRegisterOtpAction`
-2. إزالة **conditional logic** من `AuthController`
-3. إنشاء **Repository Interfaces** + Service Provider bindings
-4. إكمال **Models** (fillable, relationships, casts)
-5. إصلاح **orders migration** (الـ columns المعلّقة)
+**نقطة قوة Elham:** أفضل Actions/Repositories architecture + Paymob HMAC + Admin API + Profile كامل.  
+**نقطة ضعف:** 3 runtime blockers (middleware, cart schema, missing repo) + PSR-4 violations + Settings ناقص.
 
-### 🟡 High (قبل بناء modules جديدة)
+---
 
-6. إنشاء `AuthResponder` أو Exception Handler
-7. `TokenService` منفصل
-8. `SmsGatewayInterface` + refactor `OtpService`
-9. `EnsureIsClient` middleware
-10. توحيد API response format في كل Middleware
+## 11. ملخص الأولويات (Action Items)
 
-### 🟢 Medium (أثناء التطوير)
+### 🔴 Critical — تمنع تشغيل التطبيق
 
-11. DTOs لكل Action
-12. Responder classes لكل module
-13. Feature + Unit tests
-14. إعادة تسمية namespace `api` → `Api`
-15. حذف scaffold methods (`create`, `edit`) من API controllers
-16. إبقاء الـ controllers الفاضية **بدون تعليقات** لحد ما تتنفّذ
+1. إنشاء `EnsureIsClient` + تسجيل `'client'` alias في `bootstrap/app.php`
+2. إصلاح Cart migrations — حذف duplicates + إكمال `cart_items` schema
+3. إنشاء `PaymentMethodRepository` + حذف stub migration المكرر
+4. إصلاح PSR-4: `api` → `Api` + نقل notification actions للمسار الصحيح
+5. إصلاح double hashing في `VerifyRegisterOtpAction`
+6. `migrate:fresh` يجب يشتغل بدون أخطاء
+
+### 🟡 High — قبل production
+
+7. Repository Interfaces + `AppServiceProvider` bindings
+8. `random_int()` + OTP hashing في cache
+9. Ownership check على payment initiate
+10. حذف ~160 سطر commented routes
+11. توحيد `EnsureIsActive` response مع `ApiResponse`
+12. إصلاح `$order->user->name` → `full_name` في Paymob billing
+13. Feature tests (auth + cart + checkout mock Paymob)
+
+### 🟢 Medium — اكتمال المتطلبات
+
+14. **Settings module** (`GET/PATCH /api/settings`) — **0% حاليًا**
+15. Admin ingredients update/delete
+16. `AuthResponder` — إزالة conditional logic
+17. `PaymobServiceInterface`
+18. Mark delivery_fee في config بدل hardcoded `30`
+19. README + API documentation
 
 ---
 
@@ -788,28 +653,26 @@ public function test_login_fails_with_wrong_password(): void
 
 > **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
 
-**ملاحظة:** Routes كاملة تقريبًا — لكن **`client` middleware لسه غير مسجّل** و `cart_items` migration stub.
-
 ### 13.1 Feature Matrix
 
 | # | Feature | الحالة | Route / Implementation | النواقص |
 |---|---------|--------|------------------------|---------|
-| 1 | **Authentication** | ✅ **92%** | full OTP auth flow | namespace casing |
+| 1 | **Authentication** | ✅ **92%** | register → verify → login → logout | conditional logic في controller |
 | 2 | **Reset Password** | ✅ **95%** | forget → verify → reset | — |
 | 3 | **Profile** | ✅ **100%** | show, update, avatar, change-password | — |
 | 4 | **Categories** | ✅ **100%** | public + admin CRUD | — |
-| 5 | **Category Details** | ✅ **100%** | show | — |
-| 6 | **Meals** | ✅ **100%** | index + admin CRUD | — |
-| 7 | **Meal Details** | ✅ **100%** | show | — |
+| 5 | **Category Details** | ✅ **100%** | `GET /categories/{id}` | — |
+| 6 | **Meals** | ✅ **95%** | index + filters + admin CRUD | — |
+| 7 | **Meal Details** | ✅ **100%** | `GET /meals/{id}` | ingredients via admin |
 | 8 | **Favorites** | ✅ **100%** | list + toggle | — |
-| 9 | **Cart** | 🔴 **35%** | routes exist | **cart_items table stub** |
+| 9 | **Cart** | 🔴 **35%** | routes + Actions | **cart_items schema stub** |
 | 10 | **Checkout** | 🔴 **40%** | `POST /checkout` | **`client` middleware missing** |
-| 11 | **Payment** | 🟡 **55%** | Paymob + callback | blocked by middleware |
+| 11 | **Payment** | 🟡 **55%** | Paymob + HMAC callback | blocked by middleware + repo |
 | 12 | **My Orders** | 🟡 **55%** | index + show | blocked by middleware |
 | 13 | **Order Details** | 🟡 **55%** | show | blocked by middleware |
-| 14 | **Notifications** | 🟡 **65%** | list, mark read | Actions in wrong PSR-4 path |
-| 15 | **Settings** | 🔴 **0%** | — | — |
-| 16 | **Admin** | ✅ **85%** | dashboard, users, orders, meals | ingredients partial |
+| 14 | **Notifications** | 🟡 **65%** | list, unread, mark read/all | PSR-4 path violation |
+| 15 | **Settings** | 🔴 **0%** | — | **غير موجود بالكامل** |
+| 16 | **Admin** | ✅ **85%** | dashboard, users, orders, meals, categories | ingredients partial |
 
 **Overall Feature Completeness: ~68%**
 
@@ -817,27 +680,83 @@ public function test_login_fails_with_wrong_password(): void
 
 | المشكلة | Impact |
 |---------|--------|
-| `client` middleware not in `bootstrap/app.php` | orders/checkout/payment crash |
-| `cart_items` migration = id + timestamps only | cart broken |
-| Duplicate migrations | fresh migrate fails |
+| `client` middleware not in `bootstrap/app.php` | orders/checkout/payment/payment-methods → **500 crash** |
+| `cart_items` migration = id + timestamps only | cart add/update/delete → **SQL error** |
+| `PaymentMethodRepository` missing | payment methods → **class not found** |
+| Duplicate migrations (carts, payment_methods, tokens) | `migrate:fresh` → **fails** |
+| PSR-4 violations (`api` vs `Api`, notification actions) | autoload fail on **Linux/production** |
 
-### 13.3 Feature Completeness Scorecard
+### 13.3 Route Map
+
+```
+POST /api/auth/register, /register/verify, /login          ✅
+POST /api/auth/forget-password, /verify, /reset-password  ✅
+POST /api/auth/logout, GET /api/auth/me                   ✅ (active middleware)
+
+GET  /api/categories, /categories/{id}                    ✅
+GET  /api/meals, /meals/{id}                              ✅
+
+GET/POST/PUT/DELETE /api/cart/*                           🟡 routes ✅ — DB ❌
+GET/POST /api/favorites/*                                 ✅
+GET/PUT/POST /api/profile/*                               ✅
+GET/PATCH /api/notifications/*                            🟡 PSR-4 risk
+
+GET  /api/orders, /orders/{id}, POST /api/checkout       🔴 client middleware
+POST /api/orders/{order}/pay, /api/payment-methods/*     🔴 client + missing repo
+POST /api/payments/callback                               ✅ Paymob webhook
+
+GET  /api/admin/dashboard/stats                             ✅
+/api/admin/meals, /categories, /orders, /users           ✅
+/api/admin/ingredients                                     🟡 partial
+
+/api/settings                                              ❌
+```
+
+### 13.4 Database Tables
+
+| Table | موجود | API Wired | ملاحظات |
+|-------|-------|-----------|---------|
+| `users` | ✅ | Auth + Profile + Admin | `phone_verified_at` ✅ |
+| `categories`, `meals` | ✅ | Catalog + Admin | — |
+| `ingredients` | ✅ | Admin partial | no update/delete |
+| `favorites` | ✅ | Favorites | — |
+| `cart_items` | 🟡 stub | Cart Actions | **أعمدة ناقصة** |
+| `carts` | 🔴 duplicate | — | تعارض مع cart_items |
+| `orders`, `order_items` | ✅ | Orders | blocked by middleware |
+| `payment_methods` | 🔴 duplicate | Payment Methods | stub + full migration |
+| `payment_transactions` | ✅ | Paymob | — |
+| `notifications` | ✅ | Notifications | — |
+| `delivery_riders` | ✅ | Admin assign | — |
+| `meal_reviews` | ✅ | — | لا API |
+| `settings` | ❌ | — | **غير موجود** |
+
+### 13.5 Feature Completeness Scorecard
 
 | Category | Score |
 |----------|-------|
-| Auth + Catalog + Profile + Admin | 95% |
+| Auth + Reset + Phone Verify | 93% |
+| Profile | 100% |
+| Catalog (Categories + Meals) | 95% |
+| Favorites | 100% |
 | Cart + Orders + Payment (runtime) | 45% |
+| Notifications | 65% |
+| Admin | 85% |
 | Settings | 0% |
+| Architecture / SOLID | 85% |
 | **Overall** | **~68%** |
+
 ---
 
-## 12. المراجع
+## 14. المراجع
 
+- [Laravel Sanctum](https://laravel.com/docs/sanctum)
 - [Laravel Form Requests](https://laravel.com/docs/validation#form-request-validation)
-- [Laravel Actions Pattern](https://laravel.com/docs/structure) — community pattern
-- [SOLID Principles in PHP](https://www.php.net/manual/en/language.oop5.basic.php)
-- Project Rules: `.cursor/rules` — Laravel Code Quality Guidelines
+- [PSR-4 Autoloading](https://www.php-fig.org/psr/psr-4/)
+- [Paymob Accept API](https://developers.paymob.com/egypt/getting-started)
+- مراجعة Abdella: [abdella/FoodIfy/CODE_REVIEW.md](../../abdella/FoodIfy/CODE_REVIEW.md)
+- مراجعة Mohamed Esmail: [mohamedEsmail/FoodIfy/CODE_REVIEW.md](../../mohamedEsmail/FoodIfy/CODE_REVIEW.md)
+- مراجعة Ali: [ali/FoodIfy/CODE_REVIEW.md](../../ali/FoodIfy/CODE_REVIEW.md)
 
 ---
 
-*هذا الملف مرجع حي — حدّثه مع كل module جديد يتنفّذ.*
+*هذا الملف مرجع حي — حدّثه بعد إصلاح الـ 3 blockers الحرجة.*

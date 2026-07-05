@@ -3,10 +3,12 @@
 > **الهدف:** Controllers رفيعة تمامًا — بدون validation وبدون business logic.  
 > كل المنطق في Actions / Services / Repositories مع تطبيق SOLID في كل الطبقات.
 
-**تاريخ المراجعة:** 2 يوليو 2026   (تحديث — Feature Completeness)
+**تاريخ المراجعة:** 5 يوليو 2026  
 **الطالب:** Mohamed Esmail  
-**المستودع:** [aborafe/foodify](https://github.com/aborafe/foodify)  
-**النطاق:** `app/` — Auth + Business APIs (catalog, cart, checkout, orders, notifications)
+**المستودع:** [mohamedesmail/Foodify](https://github.com/mohamedesmail/Foodify)  
+**النطاق:** `app/` — Auth + Catalog + Cart + Checkout + Orders + Profile + Notifications + Payment Methods + Admin Web Panel
+
+> **🏆 أعلى مشروع في الـ Bootcamp** — أعلى إكمالًا (~84%) وأقرب معمارية للمعيار المستهدف across كل الطبقات.
 
 ---
 
@@ -14,22 +16,37 @@
 
 | المنطقة | الحالة | التقييم |
 |---------|--------|---------|
-| Auth Module | مُنفَّذ بالكامل | ✅ جيد — Service layer + interfaces |
-| Form Requests (Auth) | 5 requests | ✅ |
-| Form Requests (Business) | غير موجود | 🔴 |
-| Services | Auth + OTP + SMS | 🟡 جزئي — business domains بدون services |
-| Service Interfaces | 3 interfaces | ✅ DIP في auth stack |
-| Actions | غير موجود | 🔴 |
-| Repositories | غير موجود | 🔴 |
-| DTOs | غير موجود | 🔴 |
-| API Resources | غير موجود | 🔴 |
-| `ApiResponse` Trait | غير موجود | 🔴 |
-| Models | 11 models كاملة | ✅ ممتاز |
-| Feature Tests | Auth + Business | ✅ ممتاز |
-| Business Controllers | 10 controllers | 🟡 fat — validation + logic + DB |
-| SOLID Compliance | جزئي | 🟡 |
+| Auth Module | مُنفَّذ بالكامل | ✅ Actions + Services + DTOs |
+| OTP / Phone Verify | Vonage SMS + separate `otps` table | ✅ |
+| Reset Password | OTP flow كامل | ✅ |
+| Form Requests (API) | Auth + Cart + Checkout + Profile + Favorites + Payment | ✅ |
+| Form Requests (Admin) | CRUD لكل domain | ✅ |
+| Actions | 11 actions (Auth, Cart, Checkout, Orders, Payment) | ✅ |
+| Services | 23 service (API + Admin) | ✅ |
+| Repositories | 9 interfaces + Eloquent implementations | ✅ |
+| DTOs | Auth, Cart, Checkout, Profile, Favorite, PaymentMethod | ✅ |
+| API Resources | 11 resources | ✅ |
+| `ApiResponse` Trait | موجود + Resource resolution | ✅ |
+| Query Filters | Orders, Favorites, Notifications + Admin filters | ✅ |
+| Policies | CartItem, Order, PaymentMethod, Notification | ✅ |
+| Catalog | Home, Categories, Meals | ✅ |
+| Cart | full lifecycle (add/update/remove/clear) | ✅ |
+| Checkout + Orders | PlaceOrderAction + cancel | ✅ |
+| Payment Methods | CRUD + default flag | ✅ |
+| Stripe / Gateway Capture | checkout ينشئ `payment` بـ `pending` | 🟡 جزئي |
+| Profile | show + update | ✅ |
+| Notifications | index + mark read + mark all | ✅ |
+| Settings | delivery fee ثابت في service | 🟡 جزئي |
+| Admin Web Panel | Blade dashboard كامل | ✅ |
+| Feature Tests | 43+ Pest tests + ArchitectureTest | ✅ |
+| Login Throttle | OTP routes throttled — login بدون | 🟡 |
+| SOLID Compliance | قوي — أفضل في الـ cohort | ✅ |
 
-**الخلاصة:** FoodIfy هو **أكمل مشروع functionally** في الـ bootcamp — auth كامل مع Vonage OTP، catalog، cart، checkout، orders، notifications، و feature tests. Auth stack يتبع Service + Interface pattern بشكل جيد. لكن **باقي الـ domains** (cart, checkout, orders) تستخدم **fat controllers** مع inline validation و Eloquent مباشرة. لا Actions ولا Repositories ولا ApiResponse trait.
+**الخلاصة:** Mohamed Esmail بنى **أكمل وأقوى مشروع FoodIfy في Bootcamp Round 12 (~84%)**. Customer API functionally كامل: Auth (OTP + verify + reset)، Catalog، Cart، Checkout، Orders، Favorites، Profile، Notifications، Payment Methods — كلها wired وتعمل. فوق ذلك **Admin Web Panel** كامل (products, categories, orders, customers, employees, notifications, reports, global search) مع role-based access (admin/cashier).
+
+المعمارية **الأقرب للمعيار المستهدف** في الـ bootcamp: Controllers رفيعة، Form Requests مع `toDto()`، Actions layer، Services، Repository pattern مع DI bindings، Policies، ApiResponse trait، و **ArchitectureTest** يفرض المعايير تلقائيًا. نقاط القوة البارزة: OTP architecture (separate table, SMS rollback, no code leak)، price snapshots في cart/order items، server-side delivery fee، و test coverage شامل (API + Admin).
+
+**Overall Feature Completeness: ~84%** — **الأعلى في الـ Bootcamp**
 
 ---
 
@@ -37,11 +54,59 @@
 
 ```
 المستهدف:  FormRequest → Controller → Action → Service → RepositoryInterface → Model
-الحالي (Auth):  FormRequest → Controller → AuthService → OtpService → Eloquent مباشرة
-الحالي (Business):  Request (inline validate) → Controller → Eloquent مباشرة
+
+Auth:       FormRequest → Controller → Action → AuthService/OtpService → Repository → Model  (~95%)
+Business:   FormRequest → Controller → Action → Service → RepositoryInterface → Model       (~90%)
+Admin:      FormRequest → Controller → AdminService → Eloquent/Repository                   (~85%)
+Checkout:   CheckoutRequest → CheckoutController → PlaceOrderAction → CheckoutService       (~92%)
 ```
 
-**Auth هو المرجع** — الأقرب للمعمارية المستهدفة. باقي الـ modules تحتاج نفس المعالجة.
+### قواعد الـ Controller (إلزامية)
+
+```php
+// ✅ CheckoutController — نموذج مثالي في المشروع
+public function __invoke(CheckoutRequest $request): JsonResponse
+{
+    $order = $this->placeOrder->handle($request->user(), $request->toDto());
+
+    return $this->created([
+        'message' => 'Order placed successfully.',
+        'order' => new OrderResource($order),
+    ]);
+}
+
+// ✅ AuthController — thin + Actions + Resources
+public function login(LoginRequest $request): JsonResponse
+{
+    $login = $this->loginUser->handle($request->toDto());
+    return $this->success([...]);
+}
+```
+
+### هيكل المجلدات (الحالي)
+
+```
+app/
+├── Actions/
+│   ├── Auth/              ← 6 actions ✅
+│   ├── Cart/              ← Add + Update ✅
+│   ├── Checkout/          ← PlaceOrderAction ✅
+│   ├── Orders/            ← CancelOrderAction ✅
+│   └── PaymentMethods/    ← CreatePaymentMethodAction ✅
+├── Contracts/             ← 11 interfaces ✅
+├── DTOs/                  ← domain DTOs + toDto() ✅
+├── Filters/               ← QueryFilter + list filters ✅
+├── Http/
+│   ├── Controllers/       ← thin API controllers ✅
+│   ├── Controllers/Admin/ ← web dashboard ✅
+│   ├── Requests/          ← API + Admin Form Requests ✅
+│   └── Resources/         ← 11 API Resources ✅
+├── Repositories/          ← 9 Eloquent repositories ✅
+├── Services/              ← API + Admin services ✅
+├── Policies/              ← 4 policies ✅
+├── Traits/ApiResponse.php ← ✅
+└── Exceptions/DomainValidationException.php ← ✅
+```
 
 ---
 
@@ -49,475 +114,381 @@
 
 ### S — Single Responsibility Principle
 
-| الملف | المشكلة |
+| الملف | التقييم |
 |-------|---------|
-| `CheckoutController` | validation + totals + order creation + payment + cart clear + order number generation |
-| `CartController` | validation + meal lookup + quantity merge + price snapshot + subtotal calc |
-| `AuthController` | service calls + response shaping + OTP formatting + token deletion |
-| `AuthService` | ✅ مسؤولية واحدة — auth flows |
-| `OtpService` | ✅ OTP generation + verification + SMS |
+| `CheckoutController` | ✅ delegate فقط لـ `PlaceOrderAction` |
+| `PlaceOrderAction` | ✅ orchestration — checkout + admin notification |
+| `CheckoutService` | ✅ order creation + cart clear + payment record |
+| `CartController` | ✅ thin — CartService + Actions |
+| `AuthController` | 🟡 thin لكن try/catch response mapping |
+| `Admin/*Controller` | 🟡 web CRUD — services منفصلة ✅ |
 
 ### O — Open/Closed Principle
 
-- Auth stack قابل للتوسيع عبر interfaces (SMS gateway swap) ✅
-- Business controllers — أي تغيير يتطلب تعديل controller مباشرة ❌
+- `SmsServiceInterface` + `VonageSmsService` — gateway swappable ✅
+- Repository interfaces — persistence swappable ✅
+- `QueryFilter` base + domain filters — extendable listing ✅
+- Admin role gates (`admin.manage`, `orders.manage`) — extendable ✅
 
 ### L — Liskov Substitution Principle
 
-- `SmsServiceInterface`, `OtpServiceInterface`, `AuthServiceInterface` — قابلة للاستبدال ✅
-- Tests تستخدم mock لـ `SmsServiceInterface` بشكل صحيح ✅
+- كل Repository interface له Eloquent implementation قابل للاستبدال ✅
+- Tests mock `SmsServiceInterface` ✅
 
 ### I — Interface Segregation Principle
 
-- Auth contracts مركّزة ومحددة ✅
-- لا interfaces لباقي domains ❌
+- Contracts مركّزة per domain (Cart, Order, Catalog, etc.) ✅
+- Admin services منفصلة عن API services ✅
 
 ### D — Dependency Inversion Principle
 
-| الوضع الحالي | المطلوب |
+| الوضع الحالي | التقييم |
 |--------------|---------|
-| Auth: يعتمد على interfaces ✅ | — |
-| Business controllers: Eloquent مباشرة ❌ | Repository interfaces |
-| `AppServiceProvider`: 3 bindings فقط | bindings لكل repository |
+| `AppServiceProvider` — 11 DI bindings | ✅ |
+| Controllers → Actions/Services → Repository interfaces | ✅ |
+| Policies via Gate registration | ✅ |
+| Payment gateway abstraction | 🟡 — لا `PaymentGatewayInterface` بعد |
 
 ---
 
 ## 4. مراجعة ملف بملف
 
-### 4.1 `AuthController` — 🟡 الأقرب للمعمارية
+### 4.1 `AuthController` — ✅
 
-```17:37:app/Http/Controllers/AuthController.php
-class AuthController extends Controller
-{
-    public function __construct(private readonly AuthServiceInterface $authService) {}
-
+```39:84:app/Http/Controllers/AuthController.php
     public function register(RegisterRequest $request): JsonResponse
     {
         try {
-            [$user, $otp] = $this->authService->register($request->validated());
+            [$user, $otp] = $this->registerUser->handle($request->toDto());
         } catch (RuntimeException $exception) { ... }
-        return response()->json([...]);
+        return $this->created([...]);
     }
-}
-```
 
-**إيجابيات:**
-- DI عبر `AuthServiceInterface` ✅
-- Form Requests لكل endpoint ✅
-- Business logic في Service ✅
-
-**مخالفات:**
-
-| Method | المشكلة | السطر |
-|--------|---------|-------|
-| `register`, `forgotPassword` | try/catch + response mapping في controller | 23–36, 74–86 |
-| `verifyRegisterOtp` | `ValidationException` mapping | 45–48 |
-| `login` | response shaping يدوي | 62–67 |
-| `logout` | `$request->user()->currentAccessToken()->delete()` — bypasses service | 116–118 |
-| `otpResponse()` | private helper في controller — ينقل لـ ApiResponse/Resource | 125–131 |
-
-**المستهدف:**
-
-```php
-public function register(RegisterRequest $request, RegisterAction $action): JsonResponse
-{
-    return $this->registeredResponse($action->execute($request->toDto()));
-}
-```
-
----
-
-### 4.2 Form Requests (Auth) — ✅ ممتاز
-
-| Request | الحالة |
-|---------|--------|
-| `RegisterRequest` | ✅ phone regex, unique, password confirmed |
-| `LoginRequest` | ✅ |
-| `ForgotPasswordRequest` | ✅ `exists:users,phone` |
-| `OtpVerificationRequest` | ✅ 6-digit code |
-| `ResetPasswordRequest` | ✅ |
-
-**ناقص:** `toDto()` method في كل Request.
-
-**مفقود لـ business domains:**
-
-| Domain | Requests مطلوبة |
-|--------|----------------|
-| Cart | `StoreCartItemRequest`, `UpdateCartItemRequest` |
-| Checkout | `CheckoutRequest` |
-| Profile | `UpdateProfileRequest` |
-| Payment | `StorePaymentMethodRequest` |
-| Favorite | `StoreFavoriteRequest` |
-
----
-
-### 4.3 Services — 🟡 جزئي (Auth فقط)
-
-#### `AuthService` — ✅ جيد
-
-```17:74:app/Services/AuthService.php
-    public function register(array $data): array { ... }
-    public function login(string $phone, string $password): array { ... }
-    public function resetPassword(string $phone, string $code, string $password): void { ... }
-```
-
-- Transactions ✅
-- Password reset flow كامل ✅
-- Active + verified checks في login ✅
-
-**مشاكل:**
-- يقبل `array $data` بدل DTO
-- يرمي `ValidationException` — HTTP concern في service layer
-- `User::query()` مباشرة — بدون repository
-
-#### `OtpService` — ✅ ممتاز
-
-```19:47:app/Services/OtpService.php
-    public function generate(string $phone, string $type): Otp
+    public function login(LoginRequest $request): JsonResponse
     {
-        // invalidate old OTPs, create new, send SMS
-        // rollback on SMS failure ✅
+        $login = $this->loginUser->handle($request->toDto());
+        return $this->success([...]);
     }
 ```
 
-- `random_int(100000, 999999)` — 6 digits, secure ✅
+| # | الملاحظة | Severity |
+|---|----------|----------|
+| 1 | Actions + Form Requests + DTOs + Resources | ✅ |
+| 2 | OTP routes throttled (5/1, 10/1) | ✅ |
+| 3 | **`login` بدون throttle** | 🟡 |
+| 4 | SMS error exposes `$exception->getMessage()` | 🟡 |
+| 5 | `logout` via `AuthService` | ✅ |
+
+---
+
+### 4.2 Auth Actions + Services — ✅
+
+#### `RegisterUserAction` / `LoginUserAction` / `OtpService`
+
+- OTP في جدول منفصل `otps` — أفضل من تخزين في users ✅
+- `random_int(100000, 999999)` — secure ✅
 - SMS failure rollback ✅
-- Separate `otps` table (مش في users) ✅
-- OTP لا يُرجع في API response (tests تتحقق) ✅
-
-**مشكلة بسيطة:** duplicate constants (`REGISTER`, `FORGOT_PASSWORD`) في Service و Interface.
-
-#### `VonageSmsService` — ✅
-
-- SMS behind `SmsServiceInterface` — DIP ✅
-
-**مفقود:** `CheckoutService`, `CartService`, `OrderService`.
+- Login يمنع unverified/inactive users ✅
+- `DomainValidationException` → `toValidationException()` — فصل domain عن HTTP 🟡 acceptable
 
 ---
 
-### 4.4 Contracts / Interfaces — 🟡 Auth فقط
+### 4.3 Form Requests + DTOs — ✅ ممتاز
 
-```
-app/Contracts/
-├── AuthServiceInterface.php    ✅
-├── OtpServiceInterface.php     ✅
-└── SmsServiceInterface.php     ✅
-```
+| Domain | Requests | `toDto()` |
+|--------|----------|-----------|
+| Auth | Register, Login, OTP, Forgot, Reset | ✅ |
+| Cart | Store, Update | ✅ |
+| Checkout | CheckoutRequest | ✅ |
+| Profile | UpdateProfileRequest | ✅ |
+| Favorite | Store, List | ✅ |
+| Payment | StorePaymentMethod | ✅ |
+| Order/Notification | List (filters) | ✅ |
+| Admin | 15+ requests | ✅ |
 
-**مفقود:** `UserRepositoryInterface`, `OrderRepositoryInterface`, `CartItemRepositoryInterface`, etc.
+**ArchitectureTest** يفرض وجود `toDto()` في كل business request ✅
 
 ---
 
-### 4.5 `CheckoutController` — 🔴 الأسوأ
+### 4.4 Repositories — ✅
 
-```13:92:app/Http/Controllers/CheckoutController.php
-    public function __invoke(Request $request): JsonResponse
+```
+CartRepositoryInterface       → EloquentCartRepository
+OrderRepositoryInterface      → EloquentOrderRepository
+CatalogRepositoryInterface    → EloquentCatalogRepository
+MealRepositoryInterface       → EloquentMealRepository
+FavoriteRepositoryInterface   → EloquentFavoriteRepository
+NotificationRepositoryInterface → EloquentNotificationRepository
+PaymentMethodRepositoryInterface → EloquentPaymentMethodRepository
+ProfileRepositoryInterface    → EloquentProfileRepository
+```
+
+- List endpoints تستخدم `QueryFilter` (OrderListFilter, FavoriteListFilter, NotificationListFilter) ✅
+- DI bindings في `AppServiceProvider` ✅
+
+---
+
+### 4.5 `CheckoutController` + `PlaceOrderAction` — ✅
+
+```17:25:app/Http/Controllers/CheckoutController.php
+    public function __invoke(CheckoutRequest $request): JsonResponse
     {
-        $data = $request->validate([...]);          // ❌ inline validation
-        // payment method ownership check              // ❌ business logic
-        // empty cart check                            // ❌ business logic
-        $order = DB::transaction(function () {       // ❌ full checkout in controller
-            // subtotal, delivery fee, total calc
-            // order creation, order items, payment
-            // cart clear
-        });
-        return response()->json([...]);              // ❌ manual response
+        $order = $this->placeOrder->handle($request->user(), $request->toDto());
+        return $this->created([
+            'message' => 'Order placed successfully.',
+            'order' => new OrderResource($order),
+        ]);
     }
 ```
 
-| المخالفة | التفاصيل |
-|----------|----------|
-| Inline validation | سطر 15–20 |
-| Full checkout transaction | سطر 39–77 |
-| `generateOrderNumber()` | سطر 85–92 — domain logic في controller |
-| Client-controlled `delivery_fee` | سطر 41 — **security risk** — يجب server-side calc |
-| Raw model response | يرجع Order model بدون Resource |
+#### `CheckoutService`
 
-**المستهدف:**
+| # | الميزة | التقييم |
+|---|--------|---------|
+| 1 | Server-side `DEFAULT_DELIVERY_FEE = 30` | ✅ (لا client control) |
+| 2 | Payment method ownership check | ✅ |
+| 3 | Empty cart validation | ✅ |
+| 4 | DB transaction + order items + payment record | ✅ |
+| 5 | Price snapshots (`meal_name`, `unit_price`) | ✅ |
+| 6 | Cart clear after order | ✅ |
+| 7 | `payment_status: pending` — لا gateway charge | 🟡 |
 
-```php
-public function __invoke(CheckoutRequest $request, PlaceOrderAction $action): JsonResponse
-{
-    return $this->createdResponse($action->execute($request->toDto()));
-}
+---
+
+### 4.6 `CartController` — ✅
+
+- `CartService` + `AddCartItemAction` + `UpdateCartItemAction` ✅
+- `ApiResponse` + `CartItemResource` ✅
+- Policies on cart item ownership via service layer ✅
+
+---
+
+### 4.7 `OrderController` — ✅
+
+- `OrderService` + `CancelOrderAction` ✅
+- `ListOrdersRequest` + `OrderListFilter` ✅
+- `OrderResource` + ownership via service ✅
+
+---
+
+### 4.8 `PaymentMethodController` — ✅
+
+- `CreatePaymentMethodAction` + `PaymentMethodService` ✅
+- Default payment method unset logic في service ✅
+- `Gate::authorize('delete', ...)` ✅
+
+---
+
+### 4.9 `ProfileController` — ✅
+
+- `ProfileService` + `UpdateProfileRequest` + `UserResource` ✅
+- 🟡 لا change-password endpoint منفصل
+
+---
+
+### 4.10 `NotificationController` — ✅
+
+- index + markAsRead + markAllAsRead ✅
+- `NotificationPolicy` + `NotificationListFilter` ✅
+- 🟡 لا auto-create notification on order events (customer API) — admin dashboard notifications منفصلة
+
+---
+
+### 4.11 Catalog Controllers — ✅
+
+| Controller | التقييم |
+|------------|---------|
+| `HomeController` | ✅ invokable — recommended + popular meals |
+| `CategoryController` | ✅ index + nested meals |
+| `MealController` | ✅ show with details |
+
+- Catalog public (no auth) — UX جيد للتصفح ✅
+- 🟡 لا global `GET /api/meals` list مع filters
+
+---
+
+### 4.12 Admin Web Panel — ✅ ممتاز
+
+```
+/admin — dashboard metrics, products, categories, orders,
+         customers, notifications, reports, employees, global search
 ```
 
----
-
-### 4.6 `CartController` — 🔴 Fat
-
-| Method | المشاكل |
+| الميزة | التقييم |
 |--------|---------|
-| `index` | subtotal calculation في controller (سطر 23) |
-| `store` | inline validation (31–34), meal lookup + availability (36–39), quantity merge (43–50) |
-| `update` | inline validation (62–64), ownership `abort_unless` |
-| `destroy`, `clear` | ownership check مكرر |
+| Blade UI + i18n (en/ar) | ✅ |
+| Role-based: admin vs cashier | ✅ |
+| Order CRUD + PDF export + invoice | ✅ |
+| Saved reports CRUD | ✅ |
+| Global search preview + full page | ✅ |
+| Dashboard header notifications | ✅ |
+| Protected statuses (on_the_way, cancelled) — admin only | ✅ |
+| Feature tests لكل admin module | ✅ |
 
 ---
 
-### 4.7 Controllers أخرى
-
-| Controller | التقييم | المشاكل |
-|------------|---------|---------|
-| `OrderController` | 🟡 | cancel eligibility rule في controller (35–39) |
-| `FavoriteController` | 🔴 | inline validation + meal availability check |
-| `PaymentMethodController` | 🔴 | inline validation + "unset other defaults" logic |
-| `ProfileController` | 🔴 | inline validation + update |
-| `HomeController` | 🟡 | 3 catalog queries — مقبول للقراءة لكن بدون repository |
-| `CategoryController` | 🟡 | direct Eloquent queries |
-| `MealController` | ✅ | simple read — الأقرب للـ thin |
-| `NotificationController` | 🟡 | simple CRUD — direct Eloquent |
-
-**نمط مكرر:** `abort_unless($model->user_id === $request->user()->id, 404)` — يجب Policies.
-
----
-
-### 4.8 Models — ✅ ممتاز
-
-11 models مع relationships, casts, و `#[Fillable]` attributes:
+### 4.13 Models — ✅
 
 | Model | الحالة |
 |-------|--------|
-| `User` | ✅ Sanctum, hashed password, relations |
-| `Meal` | ✅ nutrition fields, availability |
-| `Category` | ✅ |
-| `Order` | ✅ status, payment fields |
-| `OrderItem` | ✅ price snapshot |
+| `User` | ✅ Sanctum, phone_verified_at, is_active |
+| `Meal` | ✅ nutrition, availability, recommended |
+| `Order` / `OrderItem` | ✅ status, payment fields, snapshots |
 | `CartItem` | ✅ unit_price snapshot |
-| `Favorite` | ✅ |
-| `Payment` | ✅ |
-| `PaymentMethod` | ✅ |
+| `Payment` / `PaymentMethod` | ✅ |
 | `Notification` | ✅ |
-| `Otp` | ✅ separate table — أفضل من تخزين OTP في users |
-
-**ناقص:**
-- Model scopes (`scopeActive`, `scopeAvailable`)
-- Policies للـ authorization
-- Factories (عدا UserFactory)
+| `Otp` | ✅ separate table |
+| `Employee` | ✅ admin auth guard |
 
 ---
 
-### 4.9 `ApiResponse` Trait — 🔴 غير موجود
+### 4.14 `ApiResponse` Trait — ✅
 
-كل controller يبني JSON يدويًا:
-
-```php
-return response()->json([
-    'message' => '...',
-    'user' => $user,
-], 201);
-```
-
-**لا envelope موحّد** — كل controller له شكل response مختلف قليلًا.
-
-**المطلوب:** `app/Traits/ApiResponse.php` مع methods:
-- `success()`, `created()`, `error()`, `paginated()`
-- Domain-specific: `loginResponse()`, `checkoutResponse()`
+- `success()`, `created()`, `error()` ✅
+- Auto-resolve JsonResource + paginated collections ✅
+- ArchitectureTest يمنع `response()->json` في API controllers ✅
 
 ---
 
-### 4.10 Actions / Repositories / DTOs — 🔴 غير موجود
+### 4.15 Tests — ✅ الأفضل في الـ Bootcamp
 
-| المجلد | الحالة |
-|--------|--------|
-| `app/Actions/` | ❌ |
-| `app/Repositories/` | ❌ |
-| `app/DTOs/` | ❌ |
-| `app/Http/Resources/` | ❌ |
+| Test File | Coverage |
+|-----------|----------|
+| `AuthApiTest` | register, verify, login gate, reset password |
+| `BusinessApiTest` | catalog, favorites, cart, checkout, orders, profile, notifications |
+| `ArchitectureTest` | enforces thin controllers, toDto(), filters |
+| `Admin*Test` (10 files) | CRUD, roles, metrics, search, reports |
+| **Total** | **43+ tests** |
 
-Auth يستخدم Service بدل Action — مقبول لكن باقي domains تحتاج نفس الطبقة.
-
----
-
-### 4.11 `AppServiceProvider` — 🟡
-
-```18:23:app/Providers/AppServiceProvider.php
-    public function register(): void
-    {
-        $this->app->bind(SmsServiceInterface::class, VonageSmsService::class);
-        $this->app->bind(OtpServiceInterface::class, OtpService::class);
-        $this->app->bind(AuthServiceInterface::class, AuthService::class);
-    }
-```
-
-**إيجابية:** DIP bindings صحيحة للـ auth stack ✅
-
-**ناقص:** repository bindings لما تُنشأ.
-
----
-
-### 4.12 Routes — ✅ جيد
-
-```16:59:routes/api.php
-Route::prefix('auth')->group(function (): void { ... });
-Route::get('home', HomeController::class);
-Route::middleware('auth:sanctum')->group(function (): void { ... });
-```
-
-**إيجابيات:**
-- Auth routes مجمّعة ✅
-- Sanctum على protected routes ✅
-- REST-ish naming ✅
-- Invokable controllers للـ single-action endpoints ✅
-
-**ناقص:**
-- API versioning (`v1`)
-- Rate limiting على OTP routes
-- Policies بدل `abort_unless` في controllers
-
----
-
-### 4.13 Middleware — 🟡
-
-- `auth:sanctum` فقط
-- JSON exception rendering لـ `api/*` ✅
-- لا custom middleware (phone verified, rate limit, ownership)
-
----
-
-### 4.14 Tests — ✅ ممتاز
-
-| Test | الحالة |
-|------|--------|
-| `AuthApiTest.php` | ✅ register, verify, login, forgot password |
-| `BusinessApiTest.php` | ✅ catalog, cart, checkout, orders |
-
-**إيجابيات:**
 - Pest PHP ✅
-- `SmsServiceInterface` mocked بشكل صحيح ✅
-- يتحقق إن OTP code **مش** في response ✅
+- `SmsServiceInterface` mocked ✅
+- OTP code not in API response ✅
 - `RefreshDatabase` ✅
-
-**ناقص:** unit tests للـ services، repository tests.
 
 ---
 
 ## 5. مشاكل أمنية
 
-| # | المشكلة | الخطورة | الملف |
-|---|---------|---------|-------|
-| 1 | Client-controlled `delivery_fee` | 🔴 | `CheckoutController:41` |
-| 2 | No rate limiting على OTP | 🟡 | `routes/api.php` |
-| 3 | `abort_unless` بدل Policies | 🟡 | multiple controllers |
-| 4 | Raw model في responses | 🟡 | all controllers — sensitive fields محتملة |
+| # | المشكلة | الملف | Severity |
+|---|---------|-------|----------|
+| 1 | **No throttle on login** | `routes/api.php:19` | 🟡 |
+| 2 | SMS error exposes exception message | `AuthController:44-46` | 🟡 |
+| 3 | Payment gateway not charged — orders marked pending | `CheckoutService:49-70` | 🟡 business |
+| 4 | Admin session separate from API — OK | `auth:employee` | ℹ️ |
+| 5 | Catalog public — intended | `routes/api.php` | ℹ️ |
+
+**ملاحظة:** OTP routes محمية بـ throttle ✅ — login فقط يحتاج `throttle:5,1` أو similar.
 
 ---
 
 ## 6. ما هو جيد ✅
 
-1. **أكمل API functionally** — auth + catalog + cart + checkout + orders + notifications.
-2. **Auth Service layer** — interfaces + DI + transactions — أفضل auth implementation في الـ bootcamp.
-3. **OTP architecture** — separate table, SMS rollback, 6-digit secure random, no code leak in API.
-4. **Feature tests** — Auth + Business coverage مع Pest.
-5. **Models** — 11 models نظيفة مع relationships و casts.
-6. **Migrations** — domain schema كامل.
-7. **Route structure** — منطقي ومنظّم.
-8. **Vonage SMS** — behind interface, swappable.
-9. **Order item price snapshot** — `meal_name`, `unit_price` محفوظة وقت الطلب.
-10. **Sanctum token abilities** — password reset flow آمن.
+1. **🏆 Best overall project in Bootcamp** — ~84% completeness + strongest architecture.
+2. **Full customer journey** — register → verify OTP → browse → cart → checkout → orders → notifications.
+3. **Repository pattern throughout** — 9 interfaces + Eloquent implementations + DI.
+4. **Actions layer** — Auth, Cart, Checkout, Orders, PaymentMethods.
+5. **Form Requests + DTOs** — `toDto()` on every business endpoint; enforced by ArchitectureTest.
+6. **Thin API controllers** — no inline validation, no raw `response()->json`.
+7. **Admin web panel** — complete Blade dashboard with roles, CRUD, reports, search.
+8. **43+ feature tests** — API + Admin + architecture enforcement.
+9. **OTP architecture** — separate table, Vonage SMS, rollback on failure, login blocked until verified.
+10. **Policies + Gates** — CartItem, Order, PaymentMethod, Notification + admin role gates.
+11. **Query filters** — reusable listing for orders, favorites, notifications.
+12. **Price snapshots** — cart and order items preserve price at time of action.
+13. **Server-side delivery fee** — not client-controlled.
+14. **ApiResponse + 11 Resources** — consistent JSON shaping.
+15. **i18n admin** — English + Arabic lang files.
 
 ---
 
 ## 7. خطة Refactor
 
-### المرحلة 1 — Quick Wins (P0) 🔴
+### Sprint 1 — Security & Payment (P0)
 
-- [ ] إنشاء `ApiResponse` trait — توحيد كل responses
-- [ ] إنشاء `CheckoutRequest` — نقل validation من controller
-- [ ] نقل `delivery_fee` calculation لـ server-side (لا تقبل من client)
-- [ ] إضافة `throttle` على OTP routes
-- [ ] إنشاء Form Requests لـ cart, profile, payment methods, favorites
+1. Add `throttle:5,1` (or `throttle:login`) on `POST /api/auth/login`
+2. Integrate Stripe (or payment gateway) — charge on checkout, update `payment_status`
+3. Hide SMS exception details in production responses
+4. `PaymentGatewayInterface` + strategy for gateway swap
 
-### المرحلة 2 — Extract Business Logic (P1) 🟡
+### Sprint 2 — Settings & Polish (P1)
 
-- [ ] `PlaceOrderAction` / `CheckoutService` — استخراج من `CheckoutController`
-- [ ] `CartService` — add/update/clear logic
-- [ ] `CancelOrderAction` — cancel eligibility rules
-- [ ] Repository interfaces + implementations
-- [ ] Bind في `AppServiceProvider`
-- [ ] Policies بدل `abort_unless`
+5. Settings module — `GET/PATCH /api/settings` (delivery fee, app config from DB)
+6. Move `DEFAULT_DELIVERY_FEE` to config/settings table
+7. Auto-create customer notification on order status change
+8. `GET /api/meals` global list with search/filters
+9. Change-password endpoint on profile
 
-### المرحلة 3 — Architecture Alignment (P2) 🟢
+### Sprint 3 — Architecture Polish (P2)
 
-- [ ] DTOs لكل service/action input
-- [ ] API Resources (`UserResource`, `OrderResource`, `MealResource`)
-- [ ] نقل `logout` + `otpResponse` من `AuthController`
-- [ ] Domain exceptions بدل `ValidationException` في services
-- [ ] Model scopes (`active`, `available`)
-- [ ] Unit tests للـ services
-
-### المرحلة 4 — Polish (P3) 🟢
-
-- [ ] README — استبدال Laravel boilerplate بتوثيق FoodIfy
-- [ ] API versioning (`v1`)
-- [ ] Align `APP_NAME`, `composer.json` name
-- [ ] Factories لكل models
+10. Reduce try/catch in `AuthController` — domain exceptions → global handler
+11. API versioning (`/api/v1`)
+12. Unit tests for Services (CheckoutService, OtpService)
+13. Factories لكل models (beyond UserFactory)
+14. README — document API + admin setup
 
 ---
 
-## 8. Controller المستهدف (مثال: Checkout)
+## 8. Controller المستهدف (مثال: Checkout — already achieved ✅)
 
 ```php
-<?php
-
-namespace App\Http\Controllers;
-
-use App\Actions\Order\PlaceOrderAction;
-use App\Http\Requests\CheckoutRequest;
-use App\Traits\ApiResponse;
-use Illuminate\Http\JsonResponse;
-
-final class CheckoutController extends Controller
+public function __invoke(CheckoutRequest $request): JsonResponse
 {
-    use ApiResponse;
+    $order = $this->placeOrder->handle($request->user(), $request->toDto());
 
-    public function __invoke(CheckoutRequest $request, PlaceOrderAction $action): JsonResponse
-    {
-        return $this->createdResponse(
-            $action->execute($request->user(), $request->toDto())
-        );
-    }
+    return $this->created([
+        'message' => 'Order placed successfully.',
+        'order' => new OrderResource($order),
+    ]);
 }
 ```
+
+**هذا Controller يُعتبر المرجع** لباقي مشاريع الـ Bootcamp.
 
 ---
 
 ## 9. File-by-File Scorecard
 
-| File | Thin Controller | Form Request | Service/Action | Repository | ApiResponse | Verdict |
-|------|:-:|:-:|:-:|:-:|:-:|---------|
-| `AuthController` | 🟡 | ✅ | ✅ Service | ❌ | ❌ | 🟡 Partial |
-| `CheckoutController` | ❌ | ❌ | ❌ | ❌ | ❌ | 🔴 Fail |
-| `CartController` | ❌ | ❌ | ❌ | ❌ | ❌ | 🔴 Fail |
-| `OrderController` | 🟡 | ❌ | ❌ | ❌ | ❌ | 🟡 Partial |
-| `FavoriteController` | ❌ | ❌ | ❌ | ❌ | ❌ | 🔴 Fail |
-| `PaymentMethodController` | ❌ | ❌ | ❌ | ❌ | ❌ | 🔴 Fail |
-| `ProfileController` | ❌ | ❌ | ❌ | ❌ | ❌ | 🔴 Fail |
-| `MealController` | ✅ | — | — | ❌ | ❌ | 🟡 OK read |
-| `AuthService` | — | — | ✅ | ❌ | — | 🟡 Good |
-| `OtpService` | — | — | ✅ | ❌ | — | ✅ Good |
-| Models | — | — | — | — | — | ✅ Good |
-| Tests | — | — | — | — | — | ✅ Good |
-| `AppServiceProvider` | — | — | 🟡 partial | ❌ | — | 🟡 Partial |
+| File | Thin | Form Request | Action/Service | Repository | ApiResponse | Verdict |
+|------|:----:|:------------:|:--------------:|:----------:|:-----------:|---------|
+| `AuthController` | ✅ | ✅ | ✅ Actions | 🟡 via Service | ✅ | ✅ |
+| `CheckoutController` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `CartController` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `OrderController` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `FavoriteController` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `PaymentMethodController` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `ProfileController` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `NotificationController` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ |
+| `HomeController` | ✅ | — | ✅ | ✅ | ✅ | ✅ |
+| `CategoryController` | ✅ | — | ✅ | ✅ | ✅ | ✅ |
+| `MealController` | ✅ | — | ✅ | ✅ | ✅ | ✅ |
+| `CheckoutService` | — | — | ✅ | ✅ | — | ✅ |
+| `OtpService` | — | — | ✅ | — | — | ✅ |
+| Admin Controllers | 🟡 web | ✅ | ✅ Admin Svc | 🟡 partial | — | ✅ |
+| Repositories (×9) | — | — | — | ✅ | — | ✅ |
+| Tests (43+) | — | — | — | — | — | ✅ |
+| `AppServiceProvider` | — | — | ✅ DI | ✅ | — | ✅ |
 
 ---
 
 ## 10. مقارنة مع مشاريع Bootcamp
 
-| المعيار | Elham | Abdella | Osama | Mohamed Esmail |
-|---------|:-:|:-:|:-:|:-:|
-| Auth مُنفَّذ | جزئي | prototype | ❌ | ✅ كامل |
-| Business APIs | scaffold | ❌ | ❌ | ✅ كامل |
-| Service Interfaces | جزئي | ❌ | ❌ | ✅ auth stack |
-| Repositories | ❌ | ❌ | ❌ | ❌ |
-| Actions | موجود | ❌ | ❌ | ❌ |
-| Feature Tests | ❌ | ❌ | ❌ | ✅ |
-| Models | scaffold | User | 8 models | 11 models |
-| ApiResponse trait | موجود | ApiTrait | ❌ | ❌ |
-| OTP architecture | OtpService | in users | ❌ | ✅ best |
+| المعيار | Mohamed Esmail | Ali | Abdella | Elham |
+|---------|:--------------:|:---:|:-------:|:-----:|
+| Feature completeness | **~84%** 🏆 | ~76% | ~70% | ~68% |
+| Actions layer | ✅ 11 actions | 🟡 partial | ❌ | ✅ |
+| Repositories | ✅ 9 interfaces | ❌ | ❌ | 🟡 |
+| Form Requests + DTOs | ✅ all domains | 🟡 partial | 🟡 3 files | ✅ |
+| Thin controllers | ✅ API | 🟡 checkout only | ❌ fat | ✅ |
+| Feature tests | ✅ **43+** | ✅ | ❌ | 🟡 |
+| Admin panel | ✅ **full web** | 🟡 users | ❌ | ✅ API |
+| OTP architecture | ✅ best | ✅ | ✅ WhatsApp | ✅ |
+| Stripe / Payment | 🟡 pending capture | ✅ 3 strategies | ✅ Cashier | ✅ Paymob |
+| ApiResponse + Resources | ✅ | ✅ | 🟡 partial | ✅ |
+| Architecture enforcement | ✅ ArchitectureTest | ❌ | ❌ | ❌ |
+| Login throttle | ❌ | ✅ | 🟡 OTP only | ✅ |
 
-**نقطة قوة Mohamed Esmail:** أكمل مشروع functionally + أفضل auth/OTP architecture + tests.  
-**نقطة ضعف:** business controllers fat — يحتاج نفس Service/Action treatment اللي اتعمل في auth.
+**نقطة قوة Mohamed Esmail:** **أكمل مشروع + أقوى معمارية + admin panel + tests** — المرجع gold standard للـ bootcamp.  
+**نقطة ضعف:** login throttle + payment gateway capture + Settings API.
 
 ---
 
@@ -525,82 +496,132 @@ final class CheckoutController extends Controller
 
 ### 🔴 Critical
 
-1. **`CheckoutController`** — استخراج كل business logic لـ `PlaceOrderAction`/`CheckoutService`
-2. **`delivery_fee`** — server-side calculation فقط
-3. **`ApiResponse` trait** — توحيد JSON responses
-4. **Form Requests** لكل business endpoint
+1. **`throttle` على login** — `Route::post('login', ...)->middleware('throttle:5,1')`
+2. **Payment gateway integration** — Stripe charge on checkout, update `payment_status` to `paid`
+3. لا ترجع SMS exception message للـ client في production
 
 ### 🟡 High
 
-5. **Repository interfaces** + DI bindings
-6. **Policies** بدل `abort_unless` المكرر
-7. **CartService** — استخراج logic من `CartController`
-8. **API Resources** — لا ترجع raw models
-9. **Rate limiting** على OTP routes
+4. **Settings API** — `GET/PATCH /api/settings` (delivery fee, app config)
+5. Auto-notify customer on order status changes
+6. Change-password profile endpoint
+7. `GET /api/meals` global catalog list
+8. Unit tests for core services
 
 ### 🟢 Medium
 
-10. DTOs لكل service/action
-11. Domain exceptions بدل `ValidationException` في services
-12. Model scopes
-13. README documentation
-14. Unit tests للـ services
+9. API versioning (`/api/v1`)
+10. Reduce AuthController try/catch — global exception handler
+11. README documentation (replace Laravel boilerplate)
+12. Factories for all models
+13. `PaymentGatewayInterface` abstraction
+
+---
+
+## 12. مقارنة سريعة — لماذا هذا المشروع الأفضل؟
+
+| Feature | Mohamed Esmail 🏆 | Ali | Abdella | Elham |
+|---------|:-----------------:|:---:|:-------:|:-----:|
+| End-to-end customer API | ✅ | 🟡 orders broken | ✅ | ✅ |
+| Admin panel | ✅ full Blade | 🟡 users only | ❌ | ✅ API |
+| Repository pattern | ✅ throughout | ❌ | ❌ | 🟡 |
+| Actions + DTOs | ✅ all domains | 🟡 auth+checkout | ❌ | ✅ |
+| Architecture tests | ✅ | ❌ | ❌ | ❌ |
+| Test count | **43+** | ~15 | ❌ | 🟡 |
+| Controller thinness | ✅ all API | 🟡 | ❌ | ✅ |
+| Payment at checkout | 🟡 pending | ✅ strategies | ✅ Stripe | ✅ Paymob |
+
+**الخلاصة:** Mohamed Esmail في **المرتبة الأولى** functionally و architecturally. Ali أقوى في payment strategies لكن orders wiring مكسور. Abdella عنده Stripe Cashier لكن zero Actions/Repositories. Elham actions جيدة لكن admin API-only و completeness أقل. **FoodIfy by Mohamed Esmail = gold standard** للـ bootcamp.
 
 ---
 
 ## 13. تقرير Feature Completeness — النواقص في الـ Application
 
-> **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
+> **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout, Admin.
 
 ### 13.1 Feature Matrix
 
 | # | Feature | الحالة | Route / Implementation | النواقص |
 |---|---------|--------|------------------------|---------|
-| 1 | **Authentication** | ✅ **95%** | API OTP auth | Vonage in prod |
-| 2 | **Reset Password** | ✅ **95%** | full OTP flow | — |
-| 3 | **Profile** | 🟡 **85%** | GET/PATCH profile | — |
-| 4 | **Categories** | ✅ **100%** | API + **admin CRUD** | — |
-| 5 | **Category Details** | 🟡 **75%** | nested meals route | — |
-| 6 | **Meals** | 🟡 **70%** | home + category meals | no global list |
-| 7 | **Meal Details** | ✅ **100%** | show | — |
-| 8 | **Favorites** | ✅ **100%** | full CRUD | — |
-| 9 | **Cart** | ✅ **100%** | full lifecycle | — |
-| 10 | **Checkout** | 🟡 **90%** | POST checkout | payment pending |
-| 11 | **Payment** | 🟡 **55%** | payment-methods | no gateway confirm |
-| 12 | **My Orders** | ✅ **100%** | index + cancel | — |
-| 13 | **Order Details** | ✅ **95%** | show | — |
-| 14 | **Notifications** | 🟡 **75%** | API read + **admin CRUD** | no auto-create on events |
-| 15 | **Settings** | 🔴 **0%** | — | user app settings API missing |
-| 16 | **Admin** | ✅ **88%** | **Blade admin panel**: products, categories, orders, customers, employees, reports | web not API |
+| 1 | **Authentication** | ✅ **96%** | register, verify OTP, login, logout | login throttle |
+| 2 | **Reset Password** | ✅ **95%** | forgot → verify OTP → reset | — |
+| 3 | **Profile** | ✅ **90%** | GET/PATCH profile | no change-password |
+| 4 | **Categories** | ✅ **100%** | API + admin CRUD | — |
+| 5 | **Category Details** | ✅ **95%** | `GET /api/categories/{id}/meals` | — |
+| 6 | **Meals** | 🟡 **85%** | home + category meals + show | no global list |
+| 7 | **Meal Details** | ✅ **100%** | `GET /api/meals/{meal}` | nutrition + ingredients ✅ |
+| 8 | **Favorites** | ✅ **100%** | index, store, destroy | filters ✅ |
+| 9 | **Cart** | ✅ **100%** | full lifecycle + summary | — |
+| 10 | **Checkout** | ✅ **92%** | POST checkout + PlaceOrderAction | gateway capture pending |
+| 11 | **Payment** | 🟡 **75%** | payment-methods CRUD | Stripe charge pending |
+| 12 | **My Orders** | ✅ **100%** | index, show, cancel | filters ✅ |
+| 13 | **Order Details** | ✅ **100%** | show + OrderResource | ownership ✅ |
+| 14 | **Notifications** | ✅ **92%** | index, mark read, mark all | no auto on order |
+| 15 | **Settings** | 🟡 **35%** | delivery fee in CheckoutService | no Settings API |
+| 16 | **Admin** | ✅ **92%** | full Blade panel + roles | web not API |
 
-**Overall Feature Completeness: ~83%**
+**Overall Feature Completeness: ~84%** 🏆
 
-### 13.2 Admin Panel (NEW)
+### 13.2 Route Map
 
 ```
-/admin — dashboard, products, categories, orders, customers,
-         notifications, reports, employees (role: admin/cashier)
+POST /api/auth/register, verify-register-otp, login, logout     ✅ (login: no throttle)
+POST /api/auth/forgot-password, verify-forgot-password-otp,
+     reset-password                                              ✅ (throttled)
+
+GET  /api/home, /categories, /categories/{id}/meals, /meals/{id} ✅ public
+
+GET/PATCH /api/profile                                         ✅
+/api/favorites/*, /api/cart/*, /api/payment-methods/*          ✅
+POST /api/checkout                                               ✅
+GET  /api/orders, /api/orders/{id}, PATCH cancel               ✅
+GET/PATCH /api/notifications/*                                 ✅
+
+/api/settings                                                  ❌
+/admin/* (dashboard, products, categories, orders, customers,
+          employees, notifications, reports, search)           ✅
 ```
 
-### 13.3 Feature Completeness Scorecard
+### 13.3 Database Tables
+
+| Table | موجود | API Wired | Admin Wired |
+|-------|-------|-----------|-------------|
+| `users` | ✅ | Auth + Profile | ✅ customers |
+| `employees` | ✅ | — | ✅ admin auth |
+| `categories`, `meals` | ✅ | Catalog | ✅ CRUD |
+| `favorites`, `cart_items` | ✅ | Favorites + Cart | — |
+| `orders`, `order_items` | ✅ | Orders | ✅ CRUD + export |
+| `payments`, `payment_methods` | ✅ | Checkout | — |
+| `notifications` | ✅ | Customer API | ✅ admin CRUD |
+| `otps` | ✅ | Auth flows | — |
+| `saved_reports` | ✅ | — | ✅ reports |
+| `settings` | ❌ | — | — |
+
+### 13.4 Feature Completeness Scorecard
 
 | Category | Score |
 |----------|-------|
-| Customer API | 88% |
-| Admin (web) | 88% |
-| Payment completion | 55% |
-| Settings API | 0% |
-| **Overall** | **~83%** |
+| Auth + Reset + Phone Verify | 96% |
+| Profile + Catalog | 93% |
+| Cart + Favorites | 100% |
+| Checkout + Payment + Orders | 88% |
+| Notifications | 92% |
+| Settings | 35% |
+| Admin (web) | 92% |
+| Architecture Quality | 95% |
+| **Overall** | **~84%** 🏆 |
+
 ---
 
-## 13. المراجع
+## 14. المراجع
 
-- [Laravel Form Requests](https://laravel.com/docs/validation#form-request-validation)
 - [Laravel Sanctum](https://laravel.com/docs/sanctum)
-- مراجعة Elham: [elham/FoodIfy/CODE_REVIEW.md](../../elham/FoodIfy/CODE_REVIEW.md)
+- [Laravel Form Requests](https://laravel.com/docs/validation#form-request-validation)
+- [Pest PHP](https://pestphp.com/)
 - مراجعة Abdella: [abdella/FoodIfy/CODE_REVIEW.md](../../abdella/FoodIfy/CODE_REVIEW.md)
-- مراجعة Osama: [osama/OnlineRestaurant/CODE_REVIEW.md](../../osama/OnlineRestaurant/CODE_REVIEW.md)
+- مراجعة Ali: [ali/FoodIfy/CODE_REVIEW.md](../../ali/FoodIfy/CODE_REVIEW.md)
+- مراجعة Elham: [elham/FoodIfy/CODE_REVIEW.md](../../elham/FoodIfy/CODE_REVIEW.md)
 
 ---
 
-*هذا الملف مرجع حي — حدّثه مع كل refactor جديد.*
+*هذا الملف مرجع حي — حدّثه مع كل refactor جديد. **Mohamed Esmail — Best Overall Project, Bootcamp Round 12.***

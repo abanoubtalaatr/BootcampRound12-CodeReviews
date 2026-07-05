@@ -3,10 +3,10 @@
 > **الهدف:** Controllers رفيعة تمامًا — بدون validation وبدون business logic.  
 > كل المنطق في Actions / Services / Repositories مع تطبيق SOLID في كل الطبقات.
 
-**تاريخ المراجعة:** 2 يوليو 2026   (تحديث — Feature Completeness)
+**تاريخ المراجعة:** 5 يوليو 2026  
 **الطالب:** Ali (ali-elmuzayan)  
 **المستودع:** [ali-elmuzayan/foodify-laravel-api](https://github.com/ali-elmuzayan/foodify-laravel-api)  
-**النطاق:** `app/` — Auth (JWT + OTP) مُنفَّذ جزئيًا + Global Search (scaffold) + باقي الـ domain غير مُنفَّذ
+**النطاق:** `app/` — Auth (JWT + OTP) + Catalog + Cart + Checkout + Orders + Payments + Favorites + Notifications + Admin (جزئي)
 
 ---
 
@@ -14,21 +14,32 @@
 
 | المنطقة | الحالة | التقييم |
 |---------|--------|---------|
-| Auth Module (JWT) | مُنفَّذ جزئيًا | 🔴 bugs حرجة في OTP |
-| OTP Service | موجود | 🟡 بدون interface + verification broken |
-| Form Requests | 5 requests (auth) | 🟡 جزئي |
-| Actions | غير موجود | 🔴 |
+| Auth Module (JWT) | مُنفَّذ بالكامل | ✅ Actions + rate limiting |
+| OTP Service | مُنفَّذ | ✅ hashed + provider interface |
+| Form Requests | auth + checkout + category | 🟡 جزئي — cart/profile ناقص |
+| Actions | Auth (7) + Checkout (3) | 🟡 partial — لا order/cart actions |
 | Repositories | غير موجود | 🔴 |
-| DTOs | غير موجود | 🔴 |
-| `ApiResponse` Trait | موجود | ✅ |
-| API Resources | `UserResource` فقط | 🟡 غير مستخدم |
-| Global Search | service موجود | 🟡 بدون route |
-| Models | User + Meal (orphan) | 🟡 |
-| Feature Tests | scaffold فقط | 🔴 |
+| DTOs | غير موجود | 🔴 arrays في Actions |
+| `ApiResponse` Trait | موجود | ✅ envelope موحّد |
+| API Resources | 12 resources | ✅ مستخدمة عبر `toResource()` |
+| Catalog (Category/Meal) | مُنفَّذ | 🟡 search bug + admin CRUD غير مُوجَّه |
+| Cart | مُنفَّذ جزئيًا | 🔴 null crash + missing update |
+| Checkout + Payment Strategy | مُنفَّذ | ✅ Cash / Stripe / PayPal |
+| My Orders | routes موجودة | 🔴 **OrderController فارغ** |
+| Payment History | route موجود | 🔴 **PaymentHistoryController فارغ** |
+| Favorites | مُنفَّذ | ✅ |
+| Profile + Addresses | commented out | 🔴 |
+| Notifications | index فقط | 🟡 لا mark-read |
+| Settings | model فقط | 🔴 |
+| Admin | users index/show | 🟡 category/meal admin غير مُوجَّه |
+| Feature Tests | Checkout + OTP + Admin | ✅ CheckoutTest شامل |
 | API Versioning | `api/v1` | ✅ |
-| SOLID Compliance | ضعيف | 🔴 |
+| SOLID Compliance | متوسط — يتحسّن | 🟡 checkout ممتاز، orders مكسور |
 
-**الخلاصة:** المشروع في مرحلة مبكرة — JWT auth + OTP scaffolding مع `ApiResponse` trait و API versioning. لكن فيه **ثغرات أمنية حرجة**: OTP verification لا يتحقق من الكود فعليًا، و controllers فارغة لـ forgot/reset password. لا Actions ولا Repositories. `Meal` model يشير لـ `Category` غير موجود.
+**الخلاصة:** Ali بنى **معمارية أقوى من معظم مشاريع الـ Bootcamp** — JWT على `/api/v1`، Actions layer لـ Auth و Checkout، Payment Strategy pattern (Cash / Stripe / PayPal)، OTP آمن مع `OtpProvider` interface و rate limiting، و `CheckoutController` + `CheckoutTest` نموذجيان. لكن **فجوات حرجة في الـ wiring**: `OrderController` و `PaymentHistoryController` **فارغان تمامًا** رغم تسجيل routes — `GET /api/v1/orders` يتعطّل. `CartController::index` يتعطّل عند عدم وجود cart. `PUT /items/{item}` مسجّل بدون `update()` في `CartItemController`. Profile routes معلّقة. Admin محصور في users فقط رغم وجود Policies و CRUD methods في `CategoryController`.
+
+**Overall Feature Completeness: ~68%**  
+**Weighted Overall (أولوية المسارات الحرجة): ~58%** — بسبب تعطّل My Orders و Payment History و Profile و Cart edge cases.
 
 ---
 
@@ -36,8 +47,56 @@
 
 ```
 المستهدف:  FormRequest → Controller → Action → Service → RepositoryInterface → Model
-الحالي:    FormRequest → Controller ──────────→ OtpService ──→ Model (Eloquent مباشرة)
-           (جزئي)         (fat + bugs)           (بدون interface)
+
+Auth:       FormRequest → Controller → Action → OtpService → Model           (~80%)
+Checkout:   FormRequest → Controller → Action → PaymentService/Strategies    (~90%)
+Catalog:    Request     → Controller ──────────────────────────────→ Model     (~60%)
+Cart:       —           → Controller → CartService ──────────────→ Model     (~55%)
+Orders:     Route       → OrderController (EMPTY) ─────────────────────────── (0%)
+Payments:   Route       → PaymentHistoryController (EMPTY) ────────────────── (0%)
+```
+
+### قواعد الـ Controller (إلزامية)
+
+```php
+// ✅ CheckoutController — نموذج مثالي في المشروع
+public function store(CheckoutRequest $request): JsonResponse
+{
+    $data = $this->checkout->handle($request->user(), $request->validated());
+    return $this->successResponse($data, 'Order created successfully', 201);
+}
+
+// ❌ OrderController — routes live لكن class فارغ
+class OrderController extends Controller
+{
+    //
+}
+```
+
+### هيكل المجلدات (الحالي)
+
+```
+app/
+├── Actions/
+│   ├── Auth/          ← 7 actions ✅
+│   └── Checkout/      ← 3 actions ✅
+├── Contracts/
+│   ├── Payment/PaymentStrategy.php  ✅
+│   ├── OtpProvider.php              ✅
+│   └── GlobalSearchable.php         🟡 بدون route
+├── Services/
+│   ├── Otp/           ✅ OtpService + Vonage/Twilio providers
+│   ├── Payment/       ✅ PaymentService + 3 strategies
+│   ├── Cart/          ✅ CartService
+│   ├── Order/         ✅ OrderService (مستخدم في checkout فقط)
+│   └── Notification/  ✅
+├── Http/
+│   ├── Controllers/   🟡 Checkout رفيع — Order/PaymentHistory فارغين
+│   ├── Requests/      🟡 جزئي
+│   └── Resources/     ✅ 12 resources
+├── Policies/          ✅ CategoryPolicy + MealPolicy (غير مُوجَّهة بالكامل)
+├── Repositories/      ❌
+└── Trait/ApiResponse.php  ✅ (🟡 folder singular)
 ```
 
 ---
@@ -48,380 +107,470 @@
 
 | الملف | المشكلة |
 |-------|---------|
-| `AuthenticatedUserController` | JWT attempt + verification check + token invalidation + exception handling |
-| `RegisteredUserController` | `User::create()` + OTP issuance |
-| `VerifyOTPController` | user lookup + OTP reset + verification — **بدون OTP check** |
-| `User::validateUser()` | business logic في model |
-| `OtpService` | OTP generation + hashing + persistence + logging + SMS stub |
+| `Checkout` Action | orchestration صحيح — cart + address + order + payment ✅ |
+| `PaymentService` | initiate + strategy resolution — مسؤولية واحدة ✅ |
+| `CategoryController` | index/show + store/update/destroy — CRUD كامل لكن routes جزئية فقط |
+| `FavoriteController` | persistence logic مباشرة — يحتاج `FavoriteService` أو Action |
+| `CartController` | fetch + null dereference — لا guard لعدم وجود cart |
+| `OrderController` | **لا implementation** — SRP violated بالعكس (مسؤولية مفقودة) |
 
 ### O — Open/Closed Principle
 
-- `GlobalSearchable` contract فقط — لا extension points للـ auth/persistence ❌
+- **Payment Strategy pattern** ممتاز — إضافة gateway جديد = strategy class جديد + سطر في `match` ✅
+- **OtpProvider interface** — Vonage/Twilio swappable via config ✅
+- `MealController::index` search — `orWhere` بدون grouping — أي filter جديد يكسر النتائج ❌
+
+### L — Liskov Substitution Principle
+
+- `CashPaymentStrategy`, `StribePaymentStrategy`, `PaypalPaymentStrategy` كلها تُنفِّذ `PaymentStrategy` بشكل متسق ✅
+- typo: `StribePaymentStrategy` (بدل Stripe) — naming inconsistency 🟡
+
+### I — Interface Segregation Principle
+
+- `PaymentStrategy` — `pay()` + `refund()` فقط — lean interface ✅
+- `OtpProvider` — `send()` فقط ✅
 
 ### D — Dependency Inversion Principle
 
 | الوضع الحالي | المطلوب |
 |--------------|---------|
-| Controllers → `User` Eloquent مباشرة | `UserRepositoryInterface` |
-| Controllers → `JWTAuth` facade | `AuthService` / Action |
-| `OtpService` concrete class | `OtpServiceInterface` |
-| `AppServiceProvider` فارغ | DI bindings |
+| `OtpProvider` bound في `AppServiceProvider` | ✅ |
+| `PaymentService` → concrete strategies via `app()` | 🟡 يعمل — يفضَّل constructor injection |
+| Controllers → `Favorite::firstOrCreate` مباشرة | Repository أو Action |
+| لا `OrderRepository` | persistence في `OrderService` فقط |
 
 ---
 
 ## 4. مراجعة ملف بملف
 
-### 4.1 Controllers — 🔴 + ثغرات أمنية
+### 4.1 Auth — ✅ تحسّن كبير
 
-#### `VerifyOTPController` — 🔴 ثغرة حرجة
+#### `RegisteredUserController` — ✅ Thin
 
-```15:28:app/Http/Controllers/Api/V1/Auth/VerifyOTPController.php
-    public function __invoke(VerifyOtpRequest $request, OtpService $otpService)
+```13:21:app/Http/Controllers/Api/V1/Auth/RegisteredUserController.php
+    public function store(RegisterRequest $request)
     {
-        $user = User::where('phone', $request->phone)->firstOrFail();
+        $user = $this->registerUserAction->handle($request->validated());
 
-        // verify the OTP  ← ❌ لا يتحقق من $request->otp أبدًا!
-        $otpService->resetOtp($user);
-        $user->validateUser();
-
-        return $this->successResponse(['user' => $user], 'OTP verified successfully');
+        return $this->successResponse(
+            ['phone' => $user->phone],
+            'OTP sent successfully'
+        );
     }
 ```
 
-**أي شخص يعرف رقم الهاتف يقدر يتحقق بدون OTP.**
+- لا token قبل verify ✅
+- Action layer ✅
+- يرجع phone فقط — لا يكشف user object ✅
 
-**الإصلاح:**
+#### `AuthenticatedUserController` — 🟡
 
-```php
-if (! $otpService->verifyOtp($user, $request->otp) || $otpService->isOtpExpired($user)) {
-    return $this->errorResponse(null, 'Invalid or expired OTP', 422);
-}
-$otpService->resetOtp($user);
-$user->validateUser();
+- `LoginUser` Action ✅ — يتحقق من verification قبل إرجاع token
+- `show()` يستخدم `UserResource` via `toResource()` ✅
+- 🟡 `catch (\Exception $e)` يسرّب `$e->getMessage()` في `errorResponse` (سطر 26)
+- 🟡 `JWTAuth` facade مباشرة في show/destroy
+
+#### `VerifyOtp` Action — ✅
+
+```20:38:app/Actions/Auth/VerifyOtp.php
+    public function handle(array $data): User
+    {
+        $user = User::wherePhone($data['phone'])->firstOrFail();
+        $this->otpService->assertValidOtp($user, $data['otp']);
+        // purpose-based: registration verify OR password-reset cache token
+        ...
+    }
 ```
+
+- OTP verification فعلي ✅ (أُصلحت ثغرة bypass السابقة)
+- purpose-aware: registration vs password reset ✅
+
+#### Auth Actions الأخرى
+
+| Action | الحالة |
+|--------|--------|
+| `LoginUser` | ✅ |
+| `RegisterUser` | ✅ |
+| `VerifyOtp` | ✅ |
+| `ResendRegistrationOtp` | ✅ |
+| `IssuePasswordResetOtp` | ✅ |
+| `ResetPassword` | ✅ |
 
 ---
 
-#### `ForgetPasswordController` / `ResetPasswordController` — 🔴 فارغين
+### 4.2 `OtpService` — ✅
 
-```7:10:app/Http/Controllers/Api/V1/Auth/ForgetPasswordController.php
-class ForgetPasswordController extends Controller
+```22:73:app/Services/Otp/OtpService.php
+```
+
+| # | النقطة | الحالة |
+|---|--------|--------|
+| 1 | OTP hashing بـ `Hash::make()` | ✅ |
+| 2 | `random_int()` للتوليد | ✅ |
+| 3 | لا plaintext في logs | ✅ |
+| 4 | Resend cooldown per user+purpose | ✅ |
+| 5 | `assertValidOtp()` throws ValidationException | ✅ |
+| 6 | Provider via `OtpProvider` interface | ✅ |
+| 7 | Rate limiting على routes (issue/verify/login) | ✅ |
+
+**`OtpSecurityTest`** — 10+ tests تغطي hashing، purpose isolation، cooldown، rate limits ✅
+
+---
+
+### 4.3 Checkout — ✅ نموذجي
+
+#### `CheckoutController` — ✅ Exemplary Thin
+
+```14:51:app/Http/Controllers/Api/V1/CheckoutController.php
+```
+
+- Constructor injection للـ 3 Actions ✅
+- Form Requests: `CheckoutRequest`, `CheckoutSuccessRequest`, `CheckoutFailedRequest` ✅
+- لا business logic في controller ✅
+
+#### `Checkout` Action — ✅
+
+- DB transaction ✅
+- empty cart validation ✅
+- delegates لـ `CartService`, `AddressService`, `OrderService`, `PaymentService` ✅
+- returns Resources via `toResource()` ✅
+
+#### Payment Strategy Pattern — ✅
+
+```59:67:app/Services/Payment/PaymentService.php
+    public function process(PaymentMethod $method): PaymentStrategy
+    {
+        return match ($method) {
+            PaymentMethod::Cash => app(CashPaymentStrategy::class),
+            PaymentMethod::Paypal => app(PaypalPaymentStrategy::class),
+            PaymentMethod::Stripe => app(StribePaymentStrategy::class),
+            ...
+        };
+    }
+```
+
+| Strategy | السلوك |
+|----------|--------|
+| `CashPaymentStrategy` | order confirmed + cart cleared فورًا |
+| `StribePaymentStrategy` | redirect URL + cart يبقى حتى success |
+| `PaypalPaymentStrategy` | نفس نمط online payment |
+
+#### `CheckoutTest` — ✅ Comprehensive
+
+- cash checkout creates order + clears cart ✅
+- empty cart → 422 ✅
+- stripe returns redirect + keeps cart ✅
+- success/failed callbacks ✅
+- `CheckoutEdgeCaseTest` لحالات إضافية ✅
+
+---
+
+### 4.4 `OrderController` — 🔴 Critical Empty
+
+```7:10:app/Http/Controllers/Api/V1/OrderController.php
+class OrderController extends Controller
 {
     //
 }
 ```
 
-Routes مسجّلة في `auth.php` (سطر 25–26) — **ستفشل عند الاستدعاء.**
+Routes مسجّلة:
 
----
-
-#### `AuthenticatedUserController` — 🔴 Fat
-
-```16:34:app/Http/Controllers/Api/V1/Auth/AuthenticatedUserController.php
-    public function store(LoginRequest $request): JsonResponse
-    {
-        // JWTAuth::attempt + verification check + token invalidation + exception handling
-        // كل ده في controller
-    }
+```
+GET /api/v1/orders           → OrderController@index   ❌ crash
+GET /api/v1/orders/{order}   → OrderController@show    ❌ crash
 ```
 
-- JWT logic كامل في controller
-- `$e->getMessage()` يتسرّب للـ client — security risk
-- يرجع raw `User` — مش `UserResource`
+**`OrderService` موجود ويُنشئ orders عند checkout** — لكن المستخدم لا يستطيع عرض طلباته.
 
----
+**المطلوب:**
 
-#### `RegisteredUserController` — 🔴
-
-```12:24:app/Http/Controllers/Api/V1/Auth/RegisteredUserController.php
-    public function store(RegisterRequest $request, OtpService $otpService)
-    {
-        $user = User::create($validated);  // ❌ DB access في controller
-        $otpService->issueOtp($user);
-        return $this->successResponse($user, 'OTP sent successfully');
-    }
-```
-
----
-
-#### Controllers أخرى
-
-| Controller | التقييم | ملاحظات |
-|------------|---------|---------|
-| `ResendOTPController` | 🟡 | `User::where()` مباشرة |
-| `RefreshTokenController` | 🟡 | JWT refresh في controller |
-| `CheckHealthController` | 🟡 | `$isHealthy` دائمًا true — dead code |
-
-**إيجابية:** single-action controllers (`__invoke`) — اتجاه SRP صحيح ✅
-
----
-
-### 4.2 `OtpService` — 🟡
-
-```11:62:app/Services/Auth/OtpService.php
-```
-
-**إيجابيات:**
-- OTP hashing بـ `Hash::make()` ✅
-- Expiry check ✅
-- `verifyOtp()` method موجود ✅
-- Config-driven expiry (`config/otp.php`) ✅
-
-**مشاكل:**
-
-| # | المشكلة | الخطورة |
-|---|---------|---------|
-| 1 | `isOtpValid()` يمرر hashed OTP لـ `verifyOtp()` — **logic broken** | 🔴 |
-| 2 | `rand(1000, 9999)` بدل `random_int()` | 🟡 أمني |
-| 3 | OTP plaintext في `Log::info()` | 🔴 |
-| 4 | `sendOtp()` stub — SMS مش مُرسل | 🟡 |
-| 5 | `$user->save()` في service — persistence في service مش repository | 🟡 |
-| 6 | لا interface (DIP violation) | 🟡 |
-
----
-
-### 4.3 `ApiResponse` Trait — ✅
-
-```7:23:app/Trait/ApiResponse.php
-trait ApiResponse
+```php
+public function index(Request $request): JsonResponse
 {
-    public function successResponse(mixed $data, string $message, int $statusCode): JsonResponse
-    public function errorResponse(mixed $data, string $message, int $statusCode): JsonResponse
+    $orders = $request->user()->orders()->latest()->paginate(10);
+    return $this->successResponse(OrderResource::collection($orders), 'Orders fetched');
+}
+
+public function show(Request $request, Order $order): JsonResponse
+{
+    $this->authorize('view', $order);
+    return $this->successResponse($order->load('items')->toResource(), 'Order fetched');
 }
 ```
 
-**إيجابيات:**
-- Envelope موحّد: `{ message, data }` ✅
-- مستخدم على base `Controller` ✅
-
-**ملاحظات:**
-- Folder `app/Trait/` (singular) — المفروض `Traits` (PSR-4 convention)
-- لا `errors` key لـ validation failures
-- Controllers تمرر نفس النص لـ `$data` و `$message` في errors
-
 ---
 
-### 4.4 Form Requests — 🟡 جزئي
+### 4.5 `PaymentHistoryController` — 🔴 Empty
 
-| Request | الحالة | ملاحظات |
-|---------|--------|---------|
-| `RegisterRequest` | ✅ | phone uniqueness + custom messages |
-| `LoginRequest` | ✅ | |
-| `VerifyOtpRequest` | 🟡 | يتحقق من `otp` لكن controller **يتجاهله** |
-| `ResendOTPRequest` | ✅ | في `Api/V1/` مش `Auth/` — inconsistent path |
-| `ResetPassword` | 🔴 | typo في الاسم (بدون `Request`) + password فقط |
-
-**مفقود:** `ForgotPasswordRequest`, `RefreshTokenRequest`
-
----
-
-### 4.5 Actions — 🔴 غير موجود
-
-لا `app/Actions/` — كل business logic في controllers/services مباشرة.
-
-**مطلوب:**
-
-```
-app/Actions/Auth/
-├── LoginUserAction.php
-├── RegisterUserAction.php
-├── VerifyOtpAction.php
-├── ResendOtpAction.php
-├── RefreshTokenAction.php
-├── ForgotPasswordAction.php
-└── ResetPasswordAction.php
+```7:7:app/Http/Controllers/Api/V1/PaymentHistoryController.php
+class PaymentHistoryController extends Controller {}
 ```
 
+```
+GET /api/v1/payments/history  → PaymentHistoryController@index  ❌ crash
+```
+
+`Payment` model + `PaymentResource` موجودان — التنفيذ سهل عبر query scoped بـ `user_id`.
+
 ---
 
-### 4.6 Repositories — 🔴 غير موجود
+### 4.6 Cart — 🔴 Bugs
 
-كل persistence عبر `User::create()`, `$user->save()` مباشرة.
+#### `CartController::index` — 🔴 Null Crash
 
----
-
-### 4.7 Models — 🟡
-
-#### `User` — 🟡
-
-**إيجابيات:**
-- UUID primary keys (`HasUuids`) ✅
-- JWT subject implementation ✅
-- `#[Fillable]` / `#[Hidden]` attributes ✅
-- OTP fields hidden ✅
-
-**مشاكل:**
-- `validateUser()` — business logic في model (سطر 46–51)
-- `verified_at` مكرر في casts (سطر 32 و 35)
-- Migration فيها `softDeletes()` لكن model بدون `SoftDeletes` trait
-- `wherePhone` scope معرّف لكن غير مستخدم
-
-#### `Meal` — 🔴 Orphan
-
-```22:25:app/Models/Meal.php
-    public function category(): BelongsTo
+```10:15:app/Http/Controllers/Api/V1/CartController.php
+    public function index()
     {
-        return $this->belongsTo(Category::class);  // ❌ Category model غير موجود
+        $cart = Cart::getAuthenticatedUserCart()->with('meals')->first();
+
+        return $this->successResponse($cart->toResource(), 'Cart fetched successfully');
     }
 ```
 
-- لا `Category` model ولا migration ولا routes
-- `GlobalSearchable` contract مُطبَّق لكن لا search endpoint
+إذا لم يُنشأ cart للمستخدم → `$cart` = `null` → **fatal error** على `->toResource()`.
+
+**الإصلاح:** أرجع empty cart structure أو أنشئ cart تلقائيًا.
+
+#### `CartItemController` — 🔴 Missing `update()`
+
+```19:34:app/Http/Controllers/Api/V1/CartItemController.php
+    public function store(Meal $meal) { ... }
+    public function destroy(Meal $meal) { ... }
+    // ❌ لا update() method
+```
+
+Route مسجّل:
+
+```
+PUT /api/v1/items/{item}  → CartItemController@update  ❌ method not found
+```
+
+`CartService` يحتاج `updateQuantity()` — أو استخدم meal route pattern متسق.
 
 ---
 
-### 4.8 Global Search — 🟡 Scaffold
+### 4.7 Catalog — 🟡
 
-| الملف | الحالة |
-|-------|--------|
-| `GlobalSearchable` contract | ✅ |
-| `GlobalSearchService` | ✅ well-structured |
-| `GlobalSearchModelRegistry` | ✅ |
-| Route/Controller | ❌ غير موجود |
+#### `CategoryController` — 🟡
 
----
+- `index` + `show` public via `apiResource` ✅
+- `store`, `update`, `destroy` مُنفَّذة مع `CategoryPolicy` ✅
+- **لكن routes:** `->only(['index', 'show'])` — admin CRUD **غير مُوجَّه**
+- `index` يرجع raw models — لا `CategoryCollection` 🟡
 
-### 4.9 `AppServiceProvider` — 🔴 فارغ
+#### `MealController` — 🔴 Search Bug
 
-لا DI bindings لأي interface.
+```21:24:app/Http/Controllers/Api/V1/MealController.php
+        if ($request->has('search')) {
+            $meals = $meals->where('name', 'like', '%' . $request->search . '%')
+                ->orWhere('description', 'like', '%' . $request->search . '%');
+        }
+```
 
----
+**المشكلة:** `orWhere` بدون grouping — يتجاوز `category_id` filter:
 
-### 4.10 Routes — 🟡
+```
+GET /meals?category_id=1&search=pizza
+→ (category_id=1 AND name LIKE pizza) OR (description LIKE pizza)
+→ meals من categories أخرى تظهر في النتائج ❌
+```
 
-```22:38:routes/api/v1/auth.php
-Route::prefix('auth')->group(function () {
-    Route::post('/login', ...);
-    Route::post('/register', ...);
-    Route::post('/forgot-password', ...);  // ❌ controller فارغ
-    Route::post('/reset-password', ...);   // ❌ controller فارغ
-    Route::post('/verify-otp', ...);      // ❌ OTP not verified
+**الإصلاح:**
+
+```php
+$meals->where(function ($q) use ($search) {
+    $q->where('name', 'like', "%{$search}%")
+      ->orWhere('description', 'like', "%{$search}%");
 });
 ```
 
-**إيجابيات:**
-- API versioning `api/v1` ✅
-- Auth routes مجمّعة ✅
-- `auth:api` JWT middleware على protected routes ✅
-
-**مشاكل:**
-- Comments تقول `/api/auth/` لكن الفعلي `/api/v1/auth/`
-- لا rate limiting على auth endpoints
-- Domain routes (products, categories, orders) commented — غير مُنفَّذة
+- `show` by slug ✅
+- pagination ✅
 
 ---
 
-### 4.11 Middleware — 🟡
+### 4.8 `FavoriteController` — 🟡
 
-- JWT guard (`auth:api`) ✅
-- JSON exception rendering لـ `api/*` ✅
-- لا custom middleware (verified user, OTP throttle)
-- `bootstrap/app.php` middleware callback فارغ
+- index مع pagination + `FavoriteCollection` ✅
+- store + toggle ✅
+- 🟡 `Favorite::firstOrCreate` / `Favorite::create` مباشرة في controller
+- 🟡 لا Form Request لـ validation
 
 ---
 
-### 4.12 Tests & Tooling — 🔴
+### 4.9 `NotificationController` — 🟡
 
-| Item | الحالة |
+- `NotificationService` injected ✅
+- unread/read split + count ✅
+- 🟡 لا `markAsRead` / `markAllAsRead` endpoints
+- `NotificationTest` موجود جزئيًا ✅
+
+---
+
+### 4.10 Profile — 🔴 Commented Out
+
+```62:70:routes/api/v1/api.php
+// Profile Routes:
+// Route::middleware(['auth:api'])->group(function () {
+//     Route::get('/profile', [ProfileController::class, 'show']);
+//     Route::put('/profile', [ProfileController::class, 'update']);
+//     Route::apiResource('addresses', AddressController::class);
+//     ...
+// });
+```
+
+- `AddressService` + `Address` model موجودان — غير مُفعَّلين
+- لا `ProfileController` في `app/Http/Controllers`
+
+---
+
+### 4.11 Admin — 🟡 Minimal
+
+```7:9:routes/api/v1/admin.php
+Route::group(['prefix' => 'admin', 'middleware' => ['auth:api', 'admin']], function () {
+    Route::apiResource('users', UserController::class)->only(['index', 'show']);
+});
+```
+
+| الميزة | الحالة |
+|--------|--------|
+| `EnsureUserIsAdmin` middleware | ✅ |
+| `AdminAuthorizationTest` | ✅ |
+| Users index/show | ✅ |
+| Category admin CRUD | ❌ methods موجودة — routes مفقودة |
+| Meal admin CRUD | ❌ `MealPolicy` موجود — لا routes |
+| Order management | ❌ |
+
+---
+
+### 4.12 Models & Resources — ✅
+
+- UUID primary keys (`HasUuids`) ✅
+- Enums: `OrderStatus`, `PaymentStatus`, `PaymentMethod`, `UserRole`, etc. ✅
+- `toResource()` / `toResourceCollection()` على models ✅
+- `Setting` model بدون API ❌
+
+---
+
+### 4.13 `AppServiceProvider` — ✅
+
+- `OtpProvider` DI binding (Vonage/Twilio) ✅
+- Rate limiters: `auth-login`, `otp-issue`, `otp-verify` ✅
+
+---
+
+### 4.14 Tests — 🟡 Good for Checkout/OTP
+
+| Test | الحالة |
 |------|--------|
-| Feature tests | scaffold فقط |
-| `UserFactory` | out of sync — `email_verified_at` بدل `verified_at`, no `phone` |
-| README | Laravel boilerplate |
-| PHP 8.3 + Laravel 13 | ✅ |
-| Symfony platform fix | مطلوب (`platform: php 8.3.31`) |
+| `CheckoutTest` | ✅ شامل |
+| `CheckoutEdgeCaseTest` | ✅ |
+| `OtpSecurityTest` | ✅ 10+ scenarios |
+| `AdminAuthorizationTest` | ✅ |
+| `NotificationTest` | 🟡 جزئي |
+| Cart / Order / Catalog tests | ❌ مفقودة |
 
 ---
 
 ## 5. مشاكل أمنية
 
-| # | المشكلة | الخطورة | الملف |
-|---|---------|---------|-------|
-| 1 | OTP verification bypass — أي phone يتتحقق بدون code | 🔴 | `VerifyOTPController` |
-| 2 | OTP plaintext في logs | 🔴 | `OtpService:18` |
-| 3 | Empty forgot/reset password controllers | 🔴 | routes live |
-| 4 | Exception messages leaked في login | 🟡 | `AuthenticatedUserController:33` |
-| 5 | `rand()` بدل `random_int()` | 🟡 | `OtpService:53` |
-| 6 | No rate limiting على auth | 🟡 | `routes/api/v1/auth.php` |
-| 7 | SMS stub — OTP never sent | 🟡 | `OtpService:58-62` |
+| # | المشكلة | الملف | Severity |
+|---|---------|-------|----------|
+| 1 | Exception message leaked في login | `AuthenticatedUserController:26` | 🟡 |
+| 2 | `orWhere` search يُرجع meals خارج category filter | `MealController:22-23` | 🟡 data leak |
+| 3 | Category CRUD methods موجودة — لو أُضيفت routes بدون policy check | `CategoryController` | 🟡 (محمي حاليًا بعدم التوجيه) |
+| 4 | لا ownership check على orders (controller فارغ أصلًا) | `OrderController` | 🔴 عند التنفيذ |
+| 5 | Cart null dereference — DoS لـ user جديد | `CartController:14` | 🟡 availability |
+| 6 | OTP security | `OtpService` + tests | ✅ fixed |
+| 7 | JWT invalidate on unverified login | `LoginUser:22-24` | ✅ |
+| 8 | Rate limiting على auth | `routes/api/v1/auth.php` | ✅ |
 
 ---
 
 ## 6. ما هو جيد ✅
 
-1. **`ApiResponse` trait** — envelope موحّد، مستخدم على base controller.
-2. **API versioning** — `api/v1` prefix من البداية.
-3. **JWT auth** — `tymon/jwt-auth` مع guard config صحيح.
-4. **Single-action controllers** — `__invoke` pattern للـ SRP.
-5. **Form Requests** — validation خارج controllers (جزئي).
-6. **`OtpService`** — فكرة فصل OTP logic (يحتاج fixes).
-7. **OTP hashing** — مش plain text في DB.
-8. **Global Search architecture** — contract + service + registry (جاهز للتوسيع).
-9. **UUID primary keys** — على User و Meal.
-10. **Laravel 13** — أحدث stack.
-11. **`config/otp.php`** — OTP config منفصل.
+1. **Actions layer** — Auth (7) + Checkout (3) — من أفضل implementations في الـ Bootcamp.
+2. **Payment Strategy pattern** — Cash / Stripe / PayPal مع `PaymentStrategy` interface.
+3. **`CheckoutController`** — controller رفيع نموذجي يُحتذى به.
+4. **`CheckoutTest`** — تغطية شاملة لـ cash, stripe, success/failed, edge cases.
+5. **OTP security** — hashing, `random_int()`, purpose isolation, cooldown, rate limits + `OtpSecurityTest`.
+6. **`OtpProvider` interface** — Vonage/Twilio swappable.
+7. **JWT + API versioning** — `/api/v1` prefix منظم.
+8. **API Resources** — 12 resources مستخدمة عبر `toResource()`.
+9. **Enums** — type-safe statuses عبر Order, Payment, Transaction.
+10. **Policies** — `CategoryPolicy`, `MealPolicy` جاهزة للـ admin (تحتاج routing).
+11. **Global Search architecture** — contract + service + registry (جاهز للتوسيع).
+12. **Verified-user gate on login** — لا token لغير المُفعَّلين.
 
 ---
 
 ## 7. خطة Refactor
 
-### المرحلة 0 — أمن فوري (P0) 🔴
+### Sprint 0 — إصلاحات فورية (P0) 🔴
 
-- [ ] إصلاح `VerifyOTPController` — استدعاء `$otpService->verifyOtp($user, $request->otp)`
-- [ ] إصلاح `isOtpValid()` في `OtpService`
-- [ ] تنفيذ أو حذف `ForgetPasswordController` + `ResetPasswordController`
-- [ ] إزالة OTP plaintext من `Log::info()`
-- [ ] إصلاح أو حذف `Meal` → `Category` orphan reference
+1. تنفيذ `OrderController::index` + `show` مع ownership policy
+2. تنفيذ `PaymentHistoryController::index`
+3. إصلاح `CartController::index` — handle null cart
+4. إضافة `CartItemController::update()` أو حذف route
+5. إصلاح `MealController` search `orWhere` grouping
 
-### المرحلة 1 — Architecture Skeleton (P1) 🟡
+### Sprint 1 — إكمال Features (P1)
 
-- [ ] `app/Actions/Auth/` — Login, Register, VerifyOtp, etc.
-- [ ] `UserRepositoryInterface` + implementation
-- [ ] `OtpServiceInterface` + binding
-- [ ] DTOs (`LoginData`, `RegisterData`, `VerifyOtpData`)
-- [ ] نقل JWT logic من controller لـ `LoginUserAction`
-- [ ] `UserResource` في كل responses
-- [ ] Form Requests كاملة (forgot, reset password)
-- [ ] Bind interfaces في `AppServiceProvider`
+6. تفعيل Profile routes + `ProfileController` + `AddressController`
+7. توجيه admin routes: `categories`, `meals` CRUD تحت `admin` prefix
+8. Notifications: mark-read + mark-all-read
+9. Settings API (`GET/PATCH /settings`) — model موجود
 
-### المرحلة 2 — Quality (P2) 🟢
+### Sprint 2 — Architecture (P2)
 
-- [ ] `random_int()` بدل `rand()`
-- [ ] SMS provider integration (أو notification)
-- [ ] Rate limiting على auth routes
-- [ ] `EnsureUserIsVerified` middleware
-- [ ] Feature tests لكل auth flow
-- [ ] Fix `UserFactory` + `SoftDeletes` trait
-- [ ] Rename `app/Trait/` → `app/Traits/`
-- [ ] Wire `GlobalSearchService` لـ route
-- [ ] README documentation
+10. `ListOrdersAction`, `GetPaymentHistoryAction`
+11. `FavoriteService` أو Actions — إخراج logic من `FavoriteController`
+12. Repository interfaces: `OrderRepository`, `PaymentRepository`
+13. DTOs بدل `array` في Actions
+14. Rename `app/Trait/` → `app/Traits/`
+15. Fix `StribePaymentStrategy` → `StripePaymentStrategy`
 
-### المرحلة 3 — Domain APIs (P3) 🟢
+### Sprint 3 — Quality (P3)
 
-- [ ] Category model + migration + CRUD
-- [ ] Meal API
-- [ ] Cart, Order modules
+16. Feature tests: Cart, Orders, Catalog search, Profile
+17. Wire Global Search endpoint
+18. README documentation
+19. إزالة exception leak في `AuthenticatedUserController`
 
 ---
 
-## 8. Controller المستهدف (مثال: Verify OTP)
+## 8. Controller المستهدف (مثال: My Orders)
 
 ```php
 <?php
 
-namespace App\Http\Controllers\Api\V1\Auth;
+namespace App\Http\Controllers\Api\V1;
 
-use App\Actions\Auth\VerifyOtpAction;
+use App\Actions\Order\ListUserOrders;
 use App\Http\Controllers\Controller;
-use App\Http\Requests\Api\V1\Auth\VerifyOtpRequest;
+use App\Models\Order;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 
-final class VerifyOTPController extends Controller
+final class OrderController extends Controller
 {
-    public function __invoke(VerifyOtpRequest $request, VerifyOtpAction $action): JsonResponse
+    public function __construct(private ListUserOrders $listOrders) {}
+
+    public function index(Request $request): JsonResponse
     {
+        $orders = $this->listOrders->handle($request->user());
+
+        return $this->successResponse($orders, 'Orders fetched successfully');
+    }
+
+    public function show(Request $request, Order $order): JsonResponse
+    {
+        $this->authorize('view', $order);
+
         return $this->successResponse(
-            $action->execute($request->toDto()),
-            'OTP verified successfully'
+            $order->load(['items.meal', 'payment'])->toResource(),
+            'Order fetched successfully'
         );
     }
 }
@@ -431,40 +580,51 @@ final class VerifyOTPController extends Controller
 
 ## 9. File-by-File Scorecard
 
-| File | Thin Controller | Form Request | Action | Repository | ApiResponse | Verdict |
-|------|:-:|:-:|:-:|:-:|:-:|---------|
-| `VerifyOTPController` | ❌ security bug | ✅ ignored | ❌ | ❌ | ✅ | 🔴 Critical |
-| `AuthenticatedUserController` | ❌ | ✅ | ❌ | ❌ | ✅ | 🔴 Fail |
-| `RegisteredUserController` | ❌ | ✅ | ❌ | ❌ | ✅ | 🔴 Fail |
-| `ForgetPasswordController` | — | ❌ | ❌ | ❌ | — | 🔴 Empty |
-| `ResetPasswordController` | — | ❌ | ❌ | ❌ | — | 🔴 Empty |
-| `ResendOTPController` | 🟡 | ✅ | ❌ | ❌ | ✅ | 🟡 Partial |
-| `RefreshTokenController` | 🟡 | ❌ | ❌ | ❌ | ✅ | 🟡 Partial |
-| `OtpService` | — | — | — | ❌ | — | 🟡 Needs fix |
-| `ApiResponse` | — | — | — | — | ✅ | ✅ Good |
-| `User` model | — | — | — | — | — | 🟡 Partial |
-| `Meal` model | — | — | — | — | — | 🔴 Orphan |
-| `AppServiceProvider` | — | — | — | ❌ | — | 🔴 Empty |
-| Global Search | — | — | — | — | — | 🟡 Scaffold |
-| Tests | — | — | — | — | — | 🔴 Missing |
+| File | Thin | Form Request | Action/Service | Repository | ApiResponse | Verdict |
+|------|:----:|:------------:|:--------------:|:----------:|:-----------:|---------|
+| `RegisteredUserController` | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| `AuthenticatedUserController` | 🟡 | ✅ | ✅ | ❌ | ✅ | 🟡 |
+| `VerifyOtpController` | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| `ForgetPasswordController` | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| `ResetPasswordController` | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ |
+| `CheckoutController` | ✅ | ✅ | ✅ | ❌ | ✅ | ✅ **Best** |
+| `OrderController` | — | — | — | — | — | 🔴 **Empty** |
+| `PaymentHistoryController` | — | — | — | — | — | 🔴 **Empty** |
+| `CartController` | 🟡 | ❌ | 🟡 | ❌ | ✅ | 🔴 null bug |
+| `CartItemController` | 🟡 | ❌ | ✅ | ❌ | ✅ | 🔴 no update |
+| `CategoryController` | 🟡 | 🟡 partial | ❌ | ❌ | ✅ | 🟡 |
+| `MealController` | 🟡 | ❌ | ❌ | ❌ | ✅ | 🟡 search bug |
+| `FavoriteController` | ❌ | ❌ | ❌ | ❌ | ✅ | 🟡 |
+| `NotificationController` | ✅ | — | ✅ | ❌ | ✅ | 🟡 |
+| `UserController` (admin) | 🟡 | — | ❌ | ❌ | ✅ | 🟡 |
+| `OtpService` | — | — | ✅ | ❌ | — | ✅ |
+| `PaymentService` + Strategies | — | — | ✅ | ❌ | — | ✅ |
+| `Checkout` Action | — | — | ✅ | ❌ | — | ✅ |
+| `CheckoutTest` | — | — | — | — | — | ✅ |
+| `OtpSecurityTest` | — | — | — | — | — | ✅ |
+| `AppServiceProvider` | — | — | ✅ DI | ❌ | — | ✅ |
 
 ---
 
 ## 10. مقارنة مع مشاريع Bootcamp
 
-| المعيار | 3bd-ulrahman | Mohamed Esmail | Ali |
-|---------|:-:|:-:|:-:|
-| Actions | ✅ 9 | ❌ | ❌ |
-| ApiResponse | macros | manual | ✅ trait |
-| Auth كامل | ✅ | ✅ | 🔴 bugs |
-| API versioning | ❌ | ❌ | ✅ v1 |
-| JWT | ❌ Sanctum | Sanctum | ✅ JWT |
-| Feature Tests | ❌ | ✅ | ❌ |
-| Repositories | ❌ | ❌ | ❌ |
-| Security bugs | OTP hardcoded | delivery_fee | **OTP bypass** |
+| المعيار | Ali | Abdella | Elham | Mohamed Esmail |
+|---------|:---:|:-------:|:-----:|:--------------:|
+| Feature completeness | ~68% | ~70% | ~68% | ~83% |
+| Weighted overall | ~58% | ~70% | ~68% | ~80% |
+| Actions layer | 🟡 partial | ❌ | ✅ | ❌ |
+| Payment pattern | ✅ Strategy | ✅ Cashier | ✅ Paymob | 🟡 pending |
+| Form Requests | 🟡 partial | 🟡 3 files | ✅ many | 🟡 partial |
+| API Resources | ✅ 12 used | ❌ raw | ✅ | 🟡 |
+| Auth security | ✅ OTP fixed | ✅ Sanctum | ✅ | ✅ |
+| Feature tests | ✅ checkout/OTP | ❌ | 🟡 | ✅ |
+| Thin checkout controller | ✅ exemplary | ❌ fat | ✅ | 🟡 |
+| My Orders wired | 🔴 empty | ✅ | ✅ | ✅ |
+| Admin | 🟡 users only | ❌ | ✅ API | ✅ web |
+| JWT + api/v1 | ✅ | ❌ | ❌ | ❌ |
 
-**نقطة قوة Ali:** ApiResponse trait + API versioning + JWT + Global Search architecture.  
-**نقطة ضعف:** OTP verification bypass — أخطر ثغرة في الـ bootcamp.
+**نقطة قوة Ali:** Payment Strategy + Checkout Actions/Tests + OTP security — أقرب مشروع لـ target architecture في مسار Checkout.  
+**نقطة ضعف:** controllers فارغة (`Order`, `PaymentHistory`) تُعطّل مسار العميل بعد الدفع — wiring ناقص رغم وجود الـ services.
 
 ---
 
@@ -472,30 +632,46 @@ final class VerifyOTPController extends Controller
 
 ### 🔴 Critical (اعملها فورًا)
 
-1. إصلاح **OTP verification bypass** في `VerifyOTPController`
-2. تنفيذ أو حذف **forgot/reset password** controllers
-3. إزالة **OTP plaintext** من logs
-4. إصلاح **`isOtpValid()`** في `OtpService`
-5. إصلاح أو حذف **`Meal` → `Category`** orphan
+1. تنفيذ **`OrderController::index` + `show`** — `GET /orders` يتعطّل حاليًا
+2. تنفيذ **`PaymentHistoryController::index`**
+3. إصلاح **`CartController::index`** null crash
+4. إضافة **`CartItemController::update()`** أو حذف `PUT /items/{item}`
+5. إصلاح **`MealController` orWhere** search bug
 
 ### 🟡 High
 
-6. بناء **Actions layer** لكل auth flow
-7. **Repository interfaces** + DI bindings
-8. نقل **JWT logic** من controller
-9. **`UserResource`** في responses
-10. **Form Requests** كاملة
-11. **`random_int()`** بدل `rand()`
-12. **Rate limiting** على auth routes
+6. تفعيل **Profile routes** (profile + addresses + payment-methods)
+7. توجيه **admin category/meal CRUD** تحت `/api/v1/admin`
+8. **OrderPolicy** — ownership على show
+9. إزالة **exception leak** في login
+10. **Cart/Order feature tests**
 
 ### 🟢 Medium
 
-13. SMS provider integration
-14. Feature tests
-15. `EnsureUserIsVerified` middleware
-16. Wire Global Search endpoint
-17. README + domain APIs (Category, Meal, Cart, Order)
-18. Rename `Trait/` → `Traits/`
+11. Notifications mark-read endpoints
+12. Settings API
+13. Repository interfaces + DTOs
+14. `FavoriteService` / Actions
+15. Global Search route
+16. Rename `Trait/` → `Traits/`
+17. README documentation
+
+---
+
+## 12. مقارنة سريعة مع مشاريع FoodIfy
+
+| Feature | Ali | Abdella | Elham | 3bd-ulrahman |
+|---------|:---:|:-------:|:-----:|:------------:|
+| Checkout architecture | ✅ Strategy + Actions | 🟡 inline Stripe | ✅ Actions | ✅ Actions |
+| Controller thinness | ✅ checkout only | ❌ all fat | ✅ most | ✅ most |
+| My Orders API | 🔴 empty controller | ✅ | ✅ | ✅ |
+| OTP security | ✅ best in cohort | ✅ | ✅ | ✅ |
+| Payment gateways | 3 strategies | Stripe Cashier | Paymob | Stripe inline |
+| API versioning | ✅ v1 | ❌ | ❌ | ❌ |
+| Admin panel | 🟡 users | ❌ | ✅ full | 🟡 |
+| Test coverage | ✅ checkout focus | ❌ | 🟡 | ❌ |
+
+**الخلاصة:** Ali في **النصف العلوي** من الـ Bootcamp من ناحية المعمارية (Actions + Strategy + Tests)، لكن في **النصف السفلي** من ناحية اكتمال الـ wiring (orders, profile, admin routes).
 
 ---
 
@@ -503,60 +679,103 @@ final class VerifyOTPController extends Controller
 
 > **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
 
-**Prefix:** `/api/v1` — بعد pull (+18 commits): catalog, cart, checkout, orders, notifications, admin **كلها موجودة**.
+**Prefix:** `/api/v1`
 
 ### 13.1 Feature Matrix
 
 | # | Feature | الحالة | Route / Implementation | النواقص |
 |---|---------|--------|------------------------|---------|
-| 1 | **Authentication** | ✅ **88%** | JWT auth routes | OTP security tests added |
-| 2 | **Reset Password** | 🟡 **80%** | forgot/reset routes | verify in tests |
-| 3 | **Profile** | 🔴 **10%** | — | **routes commented out** |
-| 4 | **Categories** | ✅ **95%** | index, show | public |
-| 5 | **Category Details** | ✅ **95%** | `GET /categories/{id}` | — |
-| 6 | **Meals** | ✅ **95%** | index, show by slug | public |
-| 7 | **Meal Details** | ✅ **95%** | `GET /meals/{slug}` | — |
-| 8 | **Favorites** | ✅ **95%** | index, store, toggle | — |
-| 9 | **Cart** | ✅ **95%** | full cart CRUD | — |
-| 10 | **Checkout** | ✅ **90%** | checkout + success/failed | Stripe flow |
-| 11 | **Payment** | 🟡 **72%** | `GET /payments/history` | no live gateway webhook doc |
-| 12 | **My Orders** | ✅ **95%** | `GET /orders` | — |
-| 13 | **Order Details** | ✅ **95%** | `GET /orders/{order}` | — |
-| 14 | **Notifications** | 🟡 **80%** | `GET /notifications` | read/mark partial |
-| 15 | **Settings** | 🔴 **0%** | — | — |
-| 16 | **Admin** | 🟡 **45%** | `admin/users` index/show | minimal admin |
+| 1 | **Authentication** | ✅ **92%** | JWT auth + Actions | exception leak |
+| 2 | **Reset Password** | ✅ **90%** | forget + reset + OTP | — |
+| 3 | **Profile** | 🔴 **5%** | — | **routes commented out** |
+| 4 | **Categories** | ✅ **85%** | index, show (public) | admin CRUD not routed |
+| 5 | **Category Details** | ✅ **90%** | `GET /categories/{id}` | — |
+| 6 | **Meals** | 🟡 **80%** | index, show by slug | orWhere search bug |
+| 7 | **Meal Details** | ✅ **90%** | `GET /meals/{slug}` | — |
+| 8 | **Favorites** | ✅ **92%** | index, store, toggle | — |
+| 9 | **Cart** | 🟡 **70%** | index, add, remove, clear | null crash, no update qty |
+| 10 | **Checkout** | ✅ **92%** | checkout + success/failed | exemplary |
+| 11 | **Payment** | 🟡 **55%** | strategies work at checkout | history endpoint empty |
+| 12 | **My Orders** | 🔴 **15%** | routes exist | **OrderController empty** |
+| 13 | **Order Details** | 🔴 **15%** | route exists | **OrderController empty** |
+| 14 | **Notifications** | 🟡 **75%** | `GET /notifications` | no mark-read |
+| 15 | **Settings** | 🔴 **0%** | model only | no API |
+| 16 | **Admin** | 🟡 **35%** | `admin/users` index/show | no category/meal admin routes |
 
-**Overall Feature Completeness: ~76%**
+**Overall Feature Completeness: ~68%**
+
+**Weighted Overall: ~58%** — أوزان أعلى لـ Orders (15%), Profile (10%), Cart (10%), Payment History (8%) لأنها مسارات حرجة مكسورة أو غير مُفعَّلة.
 
 ### 13.2 Route Map
 
 ```
-/api/v1/categories, /meals, /cart, /favorites     ✅
-/api/v1/checkout, /orders, /payments/history      ✅
-/api/v1/notifications                             ✅
-/api/v1/admin/users                               🟡 partial
-/api/v1/profile                                   ❌ commented
-/api/v1/settings                                  ❌
+POST /api/v1/auth/login, register, verify-otp, forget/reset   ✅
+POST /api/v1/auth/logout, refresh-token, GET /auth/me        ✅
+
+GET  /api/v1/categories, /categories/{id}                    ✅ public
+GET  /api/v1/meals, /meals/{slug}                            🟡 search bug
+
+GET  /api/v1/cart                                            🔴 null crash
+POST /api/v1/cart/meals/{meal}                               ✅
+PUT  /api/v1/items/{item}                                    🔴 method missing
+DELETE /api/v1/cart, /cart/meals/{meal}                      ✅
+
+POST /api/v1/checkout, /checkout/success, /checkout/failed   ✅
+
+GET  /api/v1/orders, /orders/{order}                         🔴 controller empty
+GET  /api/v1/payments/history                                🔴 controller empty
+
+GET  /api/v1/favorites, POST toggle                          ✅
+GET  /api/v1/notifications                                   🟡 partial
+
+GET  /api/v1/admin/users                                     🟡 partial
+/api/v1/profile, addresses, settings                         ❌ commented/missing
+admin/categories, admin/meals                                ❌ not routed
 ```
 
-### 13.3 Feature Completeness Scorecard
+### 13.3 Database Tables
+
+| Table | موجود | API Wired |
+|-------|-------|-----------|
+| `users` | ✅ | Auth + Admin users |
+| `categories`, `meals` | ✅ | Public read — admin write not routed |
+| `favorites` | ✅ | Favorites |
+| `carts`, `cart_meals` | ✅ | Cart (bugs) |
+| `orders`, `order_items`, `order_status_histories` | ✅ | Created at checkout — **read broken** |
+| `payments`, `transactions` | ✅ | Checkout — **history broken** |
+| `addresses` | ✅ | Profile commented |
+| `notifications` | ✅ | Index only |
+| `settings` | ✅ | No API |
+| `meal_rates` | ✅ | Not exposed |
+
+### 13.4 Feature Completeness Scorecard
 
 | Category | Score |
 |----------|-------|
-| Commerce flow (cart → checkout → orders) | 92% |
-| Catalog + Favorites | 95% |
-| Profile / Settings | 5% |
-| Admin | 45% |
-| **Overall** | **~76%** |
+| Auth + Reset + OTP | 91% |
+| Catalog (read) | 85% |
+| Cart | 70% |
+| Checkout + Payment Strategy | 92% |
+| My Orders + Payment History | 15% |
+| Favorites + Notifications | 83% |
+| Profile + Settings | 3% |
+| Admin | 35% |
+| **Overall (raw)** | **~68%** |
+| **Weighted Overall** | **~58%** |
+
 ---
 
-## 13. المراجع
+## 14. المراجع
 
 - [tymon/jwt-auth](https://github.com/tymondesigns/jwt-auth)
 - [Laravel Form Requests](https://laravel.com/docs/validation#form-request-validation)
+- [Laravel API Resources](https://laravel.com/docs/eloquent-resources)
+- [Laravel Policies](https://laravel.com/docs/authorization#creating-policies)
+- [Strategy Pattern — Refactoring Guru](https://refactoring.guru/design-patterns/strategy)
+- مراجعة Abdella: [abdella/FoodIfy/CODE_REVIEW.md](../../abdella/FoodIfy/CODE_REVIEW.md)
+- مراجعة Elham: [elham/FoodIfy/CODE_REVIEW.md](../../elham/FoodIfy/CODE_REVIEW.md)
 - مراجعة 3bd-ulrahman: [3bd-ulrahman/FoodIfy/CODE_REVIEW.md](../../3bd-ulrahman/FoodIfy/CODE_REVIEW.md)
-- مراجعة Mohamed Esmail: [mohamedEsmail/FoodIfy/CODE_REVIEW.md](../../mohamedEsmail/FoodIfy/CODE_REVIEW.md)
 
 ---
 
-*هذا الملف مرجع حي — حدّثه مع كل refactor جديد.*
+*هذا الملف مرجع حي — حدّثه مع كل refactor أو module جديد.*

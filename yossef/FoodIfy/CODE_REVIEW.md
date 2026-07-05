@@ -3,10 +3,10 @@
 > **الهدف:** Controllers رفيعة تمامًا — بدون validation وبدون business logic.  
 > كل المنطق في Actions / Services / Repositories مع تطبيق SOLID في كل الطبقات.
 
-**تاريخ المراجعة:** 4 يوليو 2026   (تحديث — Feature Completeness)
-**الطالب:** يوسف (Yossef / Yousef Mehrez)  
-**المشروع:** FoodIfy Backend API  
-**النطاق:** `app/` — Auth + Catalog + Cart + Orders + Addresses + Payments + Favorites + Reviews + Notifications
+**تاريخ المراجعة:** 5 يوليو 2026  
+**الطالب:** يوسف (Yossef / Youssef Mehrez)  
+**المستودع:** [YossefElshazly/Foodify](https://github.com/YossefElshazly/Foodify)  
+**النطاق:** `app/` — Auth + Catalog + Cart + Orders + Stripe + Addresses + Payments + Favorites + Reviews + Profile + Notifications
 
 ---
 
@@ -14,21 +14,36 @@
 
 | المنطقة | الحالة | التقييم |
 |---------|--------|---------|
-| Auth Module | مُنفَّذ | 🔴 OTP hardcoded + exposed + reset broken |
-| Form Requests | 4 files موجودة | 🔴 scaffold فقط — `authorize: false`, rules فارغة |
-| API Resources | 4 files موجودة | 🔴 unused — controllers ترجع raw models |
+| Auth Module | مُنفَّذ | 🔴 OTP hardcoded + exposed + reset chain broken |
+| OTP / Phone Verify | `OtpService` موجود | 🔴 `123456` لكل المستخدمين |
+| Reset Password | flow موجود structurally | 🔴 لا يربط verify بـ reset |
+| Form Requests | 4 files scaffold | 🔴 `authorize: false`, rules فارغة — unused |
+| API Resources | 4 files scaffold | 🔴 unused — raw models في كل response |
 | Actions / Repositories | غير موجود | 🔴 |
-| `OtpService` | موجود | 🔴 hardcoded `123456` |
-| Catalog (Category/Meal) | مُنفَّذ | 🟡 public category write ops |
-| Cart / Orders | مُنفَّذ | 🟡 authorization gaps |
-| Addresses / Favorites | مُنفَّذ | ✅ scoped correctly |
-| Payments | مُنفَّذ | 🔴 all users' data exposed |
-| Reviews / Notifications | مُنفَّذ | ✅ |
-| README | project-specific | ✅ (أفضل من معظم المشاريع) |
+| Catalog (Category/Meal) | مُنفَّذ | 🔴 category write ops **public بدون auth** |
+| Cart | مُنفَّذ | 🟡 user-scoped — destroy بدون JSON response |
+| Orders + Stripe | مُنفَّذ | 🔴 **IDOR على updateStatus** + address ownership |
+| Checkout | داخل OrderController | 🟡 transaction + cart clear + notification |
+| Payments | مُنفَّذ | 🔴 **IDOR — كل payments لكل users** |
+| Addresses / Favorites / Reviews | مُنفَّذ | ✅ scoped correctly |
+| Profile | مُنفَّذ | 🟡 image upload — `UserResource` unused |
+| Notifications | مُنفَّذ | ✅ user-scoped |
+| Payment Methods | read-only | ✅ |
+| Settings | غير موجود | 🔴 |
+| Admin | غير موجود | 🔴 |
+| README | project-specific | ✅ أفضل من معظم المشاريع |
 | Feature Tests | scaffold فقط | 🔴 |
-| SOLID Compliance | ضعيف | 🔴 fat controllers |
+| SOLID Compliance | ضعيف | 🔴 fat controllers everywhere |
+| **Security Posture** | ثغرات حرجة | 🔴 **تخفض التقييم الكلي** |
 
-**الخلاصة:** مشروع **واسع النطاق** — 14 controller، 14 model، domain model متماسك (cart → order → payment → notification). README موجود ويوثّق features. لكن Form Requests و API Resources **اتعملوا scaffold ومش مستخدمين**، والـ authorization فيها **ثغرات حرجة** (payments leak، order status update بدون ownership check، categories CRUD public). OTP service hardcoded + exposed في API response.
+**الخلاصة:** يوسف بنى **FoodIfy API واسع النطاق functionally (~70%)** — Auth، Catalog، Cart، Checkout (Stripe)، Orders، Addresses، Favorites، Reviews، Profile، Notifications كلها موجودة. README يوثّق الـ features بوضوح. لكن **الأمان يُسقط التقييم الفعلي إلى ~58% weighted**: IDOR حرج على payments و order status update، categories CRUD عام بدون authentication، OTP hardcoded ومكشوف في API، وسلسلة reset password مكسورة. Form Requests و API Resources **اتعملوا scaffold ومش مستخدمين**.
+
+| المقياس | النسبة |
+|---------|--------|
+| **Feature Completeness** | **~70%** |
+| **Weighted Score (security-adjusted)** | **~58%** |
+
+> **لماذا الفرق؟** تغطية الـ features جيدة، لكن ثغرات IDOR و public write ops و OTP leaks تجعل الـ API **غير آمن للإنتاج** — يُخصم ~12 نقطة من التقييم الكلي.
 
 ---
 
@@ -36,17 +51,69 @@
 
 ```
 المستهدف:  FormRequest → Controller → Action → Service → RepositoryInterface → Model
-الحالي:    Request ──────→ Controller ──────────→ OtpService ────────────────→ Model
-                          (validation + logic)      (hardcoded OTP)
+
+Auth:      Request ──→ AuthController ──→ OtpService (hardcoded) ──→ Model  (~25%)
+Business:  Request ──→ Controller ───────────────────────────────────→ Model  (0%)
+                          (inline validate + Stripe + DB + notify)
+                          (NO ownership checks on payments/orders)
 ```
 
-**Scaffold موجود لكن غير مفعّل:**
+### قواعد الـ Controller (إلزامية)
+
+```php
+// ✅ Controller مثالي
+public function store(PlaceOrderRequest $request, PlaceOrderAction $action): JsonResponse
+{
+    return response()->json(
+        new OrderResource($action->execute($request->user(), $request->toDto())),
+        201
+    );
+}
+
+// ❌ الوضع الحالي في PaymentController
+Payment::with('order')->get();  // ALL users' payments — IDOR
+
+// ❌ الوضع الحالي في OrderController@updateStatus
+$order = Order::findOrFail($id);
+$order->update(['status' => $request->status]);  // ANY user can change ANY order
+```
+
+### Scaffold موجود لكن غير مفعّل
 
 ```
-app/Http/Requests/     ← 4 files, authorize() = false, rules() = []
-app/Http/Resources/    ← 4 files, parent::toArray() only, unused
+app/Http/Requests/     ← RegisterRequest, LoginRequest, MealRequest, CheckoutRequest
+                         authorize() = false, rules() = [], NOT wired
+app/Http/Resources/    ← UserResource, MealResource, CategoryResource, OrderResource
+                         parent::toArray() only, NOT used
 app/Http/Controllers/API/CheckoutController.php  ← empty, not routed
 app/Http/Controllers/API/HomeController.php      ← empty, not routed
+```
+
+### هيكل المجلدات المقترح
+
+```
+app/
+├── Actions/
+│   ├── Auth/
+│   ├── Cart/
+│   ├── Order/
+│   └── Payment/
+├── Contracts/
+│   ├── Repositories/
+│   └── Services/
+├── DTOs/
+├── Http/
+│   ├── Controllers/API/
+│   ├── Middleware/          ← admin, phone.verified
+│   ├── Requests/            ← implement + wire existing scaffold
+│   └── Resources/           ← implement + use everywhere
+├── Policies/                ← OrderPolicy, PaymentPolicy, AddressPolicy
+├── Repositories/
+├── Services/
+│   ├── OtpService.php       ← موجود — fix hardcoded OTP + add SmsGateway
+│   └── StripePaymentService.php
+└── Traits/
+    └── ApiResponse.php      ← add for consistent envelope
 ```
 
 ---
@@ -57,32 +124,34 @@ app/Http/Controllers/API/HomeController.php      ← empty, not routed
 
 | الملف | المشكلة |
 |-------|---------|
-| `AuthController` | register + login + logout + OTP + forgot + reset — 228 lines |
-| `OrderController` | create + track + status update + list + show + notifications |
+| `AuthController` | register + login + logout + OTP + forgot + reset — ~228 lines |
+| `OrderController` | create + track + **updateStatus** + list + show + notifications + Stripe |
 | `MealController` | CRUD + search + category filter + file handling |
 | `ProfileController` | show + update + image upload/delete |
+| `PaymentController` | index + show — **no authorization logic at all** |
 
 ### O — Open/Closed Principle
 
-- OTP logic hardcoded in `OtpService` — adding Vonage requires editing service
-- No payment gateway abstraction — Payment records created as `pending`, never updated
+- OTP logic hardcoded في `OtpService` — أي gateway جديد (Vonage/SMS) يتطلب تعديل الـ service مباشرة.
+- Stripe charge logic داخل `OrderController` — لا abstraction للـ payment gateway.
+- Vonage في `composer.json` + config لكن **غير مستخدم** — misleading.
 
 ### L — Liskov Substitution Principle
 
-- N/A — no interfaces
+- N/A — لا interfaces.
 
 ### I — Interface Segregation Principle
 
-- N/A — no interfaces
+- N/A — لا interfaces.
 
 ### D — Dependency Inversion Principle
 
 | الوضع الحالي | المطلوب |
 |--------------|---------|
-| `OtpService` concrete only | `SmsGatewayInterface` |
-| Eloquent in controllers | Repository interfaces |
-| `AppServiceProvider` فارغ | DI bindings |
-| Vonage in composer + config | Unused — misleading |
+| `OtpService` concrete only | `SmsGatewayInterface` + Vonage impl |
+| Controllers → Eloquent مباشرة | Repository interfaces |
+| Stripe inline في OrderController | `PaymentGatewayInterface` |
+| `AppServiceProvider` فارغ | DI bindings + Policies |
 
 ---
 
@@ -99,16 +168,16 @@ app/Http/Controllers/API/HomeController.php      ← empty, not routed
 
 **المشاكل:**
 
-| Method | المشكلة | السطر |
-|--------|---------|-------|
-| `register` | `Hash::make()` + `'password' => 'hashed'` cast = **double hashing** | 22 |
-| `resendOtp` | **`'otp' => $user->otp` في response** — OTP leak | 99–102 |
-| `resetPassword` | **لا يتحقق إن OTP verified** — phone + password فقط | 203–227 |
-| `verifyResetOtp` | يverify OTP لكن **لا session/token** يربط بـ reset step | 172–201 |
-| `logout` | **Dead code** — return مكرر unreachable | 75–80 |
-| `profile` | **Unused** — routes تستخدم ProfileController | 105–110 |
-| كل methods | Inline `$request->validate()` — Form Requests موجودة لكن unused | — |
-| `login` | يرجع full `$user` — ممكن يحتوي OTP fields | 58–62 |
+| Method | المشكلة | Severity |
+|--------|---------|----------|
+| `register` | `Hash::make()` + `'password' => 'hashed'` cast = **double hashing** | 🔴 |
+| `resendOtp` | **`'otp' => $user->otp` في response** — OTP leak | 🔴 |
+| `resetPassword` | **لا يتحقق إن OTP verified** — phone + password فقط | 🔴 |
+| `verifyResetOtp` | يverify OTP لكن **لا session/token** يربط بـ reset step | 🔴 |
+| `logout` | **Dead code** — return مكرر unreachable | 🟡 |
+| `profile` | **Unused** — routes تستخدم ProfileController | 🟡 |
+| كل methods | Inline `$request->validate()` — Form Requests موجودة لكن unused | 🟡 |
+| `login` | يرجع full `$user` — ممكن يحتوي OTP fields | 🟡 |
 
 **Double Hashing:**
 
@@ -116,8 +185,8 @@ app/Http/Controllers/API/HomeController.php      ← empty, not routed
 // User.php
 'password' => 'hashed',
 
-// AuthController.php — سطر 22, 219
-'password' => Hash::make($request->password),  // ❌
+// AuthController.php
+'password' => Hash::make($request->password),  // ❌ double hash
 ```
 
 **Password Reset Chain Broken:**
@@ -129,20 +198,12 @@ forgot-password → verify-reset-otp → reset-password
                                     anyone with phone can reset
 ```
 
-**Fix reset flow:**
-
-```php
-// Option A: reset-password requires OTP in same request
-// Option B: verify-reset-otp sets short-lived reset token in cache
-// Option C: merge verify + reset into single endpoint
-```
-
 ---
 
 ### 4.2 `OtpService` — 🔴 Critical
 
 ```php
-// OtpService.php — سطر 13
+// OtpService.php
 'otp' => '123456',  // ❌ hardcoded — same for ALL users
 ```
 
@@ -157,146 +218,172 @@ forgot-password → verify-reset-otp → reset-password
 
 ```php
 $otp = str_pad((string) random_int(0, 999999), 6, '0', STR_PAD_LEFT);
-// Send via Vonage/SMS — never return in response
+// Send via Vonage/SMS — NEVER return in response
 ```
 
 ---
 
-### 4.3 `OrderController` — 🟡 Authorization Gaps
+### 4.3 `OrderController` — 🔴 IDOR + Fat Controller
 
 **الإيجابيات:**
 - DB transaction ✅
-- Cart → order → payment → clear cart → notification ✅
+- Cart → order → Stripe charge → clear cart → notification ✅
 - User-scoped index/show/track ✅
 - Price snapshot on order items ✅
 - Eager loading ✅
 
 **المشاكل:**
 
-| # | المشكلة | السطر | الخطورة |
-|---|---------|-------|---------|
-| 1 | `updateStatus` — **no user_id check** — أي user يغيّر status أي order | 132–136 | 🔴 |
-| 2 | `address_id` validated `exists` but **not ownership** | 21 | 🔴 |
-| 3 | Exception message exposed in 500 response | 99 | 🟡 |
-| 4 | Payment always `pending` — never updated to `paid` | 64–70 | 🟡 |
-| 5 | Inline validation | 20–23 | 🟡 |
+| # | المشكلة | Severity |
+|---|---------|----------|
+| 1 | **`updateStatus` — no user_id check** — أي user يغيّر status أي order | 🔴 **IDOR** |
+| 2 | **`address_id` validated `exists` but not ownership** | 🔴 |
+| 3 | Stripe charge logic داخل controller | 🟡 |
+| 4 | Exception message exposed in 500 response | 🟡 |
+| 5 | Payment status always `pending` — never updated to `paid` | 🟡 |
+| 6 | Inline validation | 🟡 |
 
 ```php
-// ❌ updateStatus — any authenticated user can cancel/deliver ANY order
+// ❌ updateStatus — privilege escalation
 $order = Order::findOrFail($id);
 $order->update(['status' => $request->status]);
 
-// ✅ Fix: admin middleware OR ownership check
-$order = Order::where('id', $id)->where('user_id', $request->user()->id)->firstOrFail();
-// OR: Route::put(...)->middleware('admin')
+// ✅ Fix Option A: admin middleware only
+Route::put('orders/{id}/status', ...)->middleware('admin');
+
+// ✅ Fix Option B: ownership check (if user can cancel own order)
+$order = Order::where('id', $id)
+    ->where('user_id', $request->user()->id)
+    ->firstOrFail();
+$order->update(['status' => $request->only('cancelled')]); // whitelist statuses
+```
+
+```php
+// ❌ address_id — no ownership
+'address_id' => 'required|exists:addresses,id',
+
+// ✅ Fix
+'address_id' => [
+    'required',
+    Rule::exists('addresses', 'id')->where('user_id', $request->user()->id),
+],
 ```
 
 ---
 
-### 4.4 `PaymentController` — 🔴 Data Leak
+### 4.4 `PaymentController` — 🔴 Critical IDOR
 
 ```php
-// PaymentController.php — سطر 11–15
-Payment::with('order')->get()  // ❌ ALL users' payments
+// ❌ PaymentController — ALL users' payments visible
+public function index()
+{
+    return Payment::with('order')->get();
+}
 
-// Fix:
-Payment::whereHas('order', fn($q) => $q->where('user_id', auth()->id()))->get()
+public function show($id)
+{
+    return Payment::with('order')->findOrFail($id);  // any payment by ID
+}
 ```
 
-Same issue in `show($id)` — no user scoping.
+| Attack Scenario | Impact |
+|-----------------|--------|
+| `GET /api/payments` as User A | يرى payments لـ User B, C, D... |
+| `GET /api/payments/{id}` | enumerate payment IDs — full order + amount leak |
+
+**Fix:**
+
+```php
+public function index(Request $request)
+{
+    return Payment::whereHas('order', fn ($q) =>
+        $q->where('user_id', $request->user()->id)
+    )->with('order')->get();
+}
+
+public function show(Request $request, $id)
+{
+    return Payment::whereHas('order', fn ($q) =>
+        $q->where('user_id', $request->user()->id)
+    )->with('order')->findOrFail($id);
+}
+```
+
+**أفضل:** `PaymentPolicy` + `$this->authorize('view', $payment)`.
 
 ---
 
 ### 4.5 `CategoryController` — 🔴 Public Write Ops
 
 ```php
-// routes/api.php — سطر 64
-Route::apiResource('categories', CategoryController::class);  // NO auth middleware
+// routes/api.php — NO auth middleware on categories
+Route::apiResource('categories', CategoryController::class);
 ```
 
-**النتيجة:** أي شخص يقدر POST/PUT/DELETE categories بدون token.
+**النتيجة:** أي شخص (بدون token) يقدر `POST/PUT/DELETE` categories.
+
+| Attack | Endpoint | Auth Required? |
+|--------|----------|----------------|
+| Create fake category | `POST /api/categories` | ❌ لا |
+| Deface category | `PUT /api/categories/{id}` | ❌ لا |
+| Delete all categories | `DELETE /api/categories/{id}` | ❌ لا |
+
+**Fix:**
+
+```php
+// Public read only
+Route::get('categories', [CategoryController::class, 'index']);
+Route::get('categories/{category}', [CategoryController::class, 'show']);
+
+// Admin write
+Route::middleware(['auth:sanctum', 'admin'])->group(function () {
+    Route::post('categories', ...);
+    Route::put('categories/{category}', ...);
+    Route::delete('categories/{category}', ...);
+});
+```
 
 **مشاكل إضافية:**
-
-| # | Issue |
-|---|-------|
-| Validation typo | `'nullable\|\|image'` — double pipe (L22) |
-| Image upload commented out on create | stores raw string |
-| `update` uses `$request->all()` — no validation | mass assignment risk |
+- Validation typo: `'nullable||image'` — double pipe
+- `update` uses `$request->all()` — mass assignment risk
+- Image upload commented out on create
 
 ---
 
 ### 4.6 `MealController` — 🟡
 
-**الإيجابيات:**
-- Search, category filter, CRUD ✅
-- Image handling on update/destroy ✅
-- Relations loaded ✅
+**الإيجابيات:** search, category filter, CRUD, image handling on update/destroy ✅
 
 **المشاكل:**
-
-| # | Issue |
-|---|-------|
-| All meal routes require auth (including GET index) | catalog not public |
-| Image upload commented out on `store` | incomplete create |
-| `MealRequest` exists but unused | inline validation |
-| `MealResource` exists but unused | raw model returned |
+- All meal routes require auth (including GET index) — catalog not public
+- Image upload commented out on `store`
+- `MealRequest` + `MealResource` exist but unused
 
 ---
 
 ### 4.7 `CartController` — 🟡
 
-**الإيجابيات:**
-- firstOrCreate cart pattern ✅
-- Price snapshot on add ✅
-- User-scoped operations ✅
+**الإيجابيات:** firstOrCreate cart, price snapshot, user-scoped ✅
 
 **المشاكل:**
-
-| # | Issue |
-|---|-------|
-| `destroy` — **no JSON response returned** | client gets empty response |
-| No unique `(cart_id, meal_id)` in migration | duplicate rows possible |
-| Inline validation | no Form Request |
+- `destroy` — **no JSON response returned**
+- No unique `(cart_id, meal_id)` in migration — duplicate rows possible
+- Inline validation
 
 ---
 
 ### 4.8 Controllers الأخرى
 
-#### `AddressController` — ✅ (mostly)
-
-- CRUD scoped to user ✅
-- **`update` has no validation** — uses `$request->only(...)`
-
-#### `FavoriteController` — ✅
-
-- firstOrCreate on add ✅
-- User-scoped ✅
-
-#### `ReviewController` — ✅
-
-- Duplicate review check ✅
-- User-scoped update/delete ✅
-- Route `{meal}` works with `$mealId` param (implicit binding by ID)
-
-#### `NotificationController` — ✅
-
-- Clean, user-scoped ✅
-
-#### `ProfileController` — 🟡
-
-- Image upload via Storage ✅
-- `birth_date`, `address`, `image` not in `$fillable` — works via direct assignment
-- Returns raw user — `UserResource` unused
-
-#### `PaymentMethodController` — ✅
-
-- Read-only ✅
-
-#### Empty Stubs
-
-- `CheckoutController` — empty, not routed
-- `HomeController` — empty, not routed
+| Controller | Verdict | Notes |
+|------------|---------|-------|
+| `AddressController` | ✅ mostly | CRUD scoped — `update` بدون validation |
+| `FavoriteController` | ✅ | firstOrCreate, user-scoped |
+| `ReviewController` | ✅ | duplicate check, user-scoped |
+| `NotificationController` | ✅ | clean, user-scoped |
+| `ProfileController` | 🟡 | image upload OK — `UserResource` unused |
+| `PaymentMethodController` | ✅ | read-only, safe |
+| `CheckoutController` | 🔴 stub | empty, not routed |
+| `HomeController` | 🔴 stub | empty, not routed |
 
 ---
 
@@ -309,20 +396,16 @@ Route::apiResource('categories', CategoryController::class);  // NO auth middlew
 | `MealRequest` | `false` | `[]` | ❌ |
 | `CheckoutRequest` | `false` | `[]` | ❌ |
 
-**Action:** Either implement and wire them, or delete to avoid confusion.
-
 ---
 
 ### 4.10 API Resources — 🔴 Unused
 
 | Resource | Status |
 |----------|--------|
-| `UserResource` | `parent::toArray()` only — unused |
+| `UserResource` | `parent::toArray()` only — hides nothing, unused |
 | `MealResource` | same |
 | `CategoryResource` | same |
 | `OrderResource` | same |
-
-Controllers return raw Eloquent models everywhere.
 
 ---
 
@@ -332,31 +415,25 @@ Controllers return raw Eloquent models everywhere.
 |-------|--------|
 | `User` | 🟡 missing `birth_date, address, image` in fillable; hidden references nonexistent `mobile_verify_code` |
 | `Category`, `Meal`, `MealImage` | ✅ |
-| `Cart`, `CartItem` | ✅ one cart per user |
+| `Cart`, `CartItem` | ✅ — 🟡 no unique(cart_id, meal_id) |
 | `Favorite` | ✅ unique constraint |
-| `Address` | ✅ structured fields |
+| `Address` | ✅ |
 | `Order`, `OrderItem` | ✅ status enum, price snapshot |
-| `Payment`, `PaymentMethod` | ✅ |
-| `Notification` | ✅ custom model (not Laravel Notifications) |
-| `Review` | 🟡 no unique(user_id, meal_id) in DB — app-level only |
+| `Payment`, `PaymentMethod` | ✅ — payment status never transitions |
+| `Notification` | ✅ custom model |
+| `Review` | 🟡 no unique(user_id, meal_id) in DB |
 
 ---
 
-### 4.12 `routes/api.php` — 🟡
+### 4.12 `routes/api.php` — 🔴 Security Routing
 
-**الإيجابيات:**
-- RESTful structure ✅
-- Sanctum on protected routes ✅
-
-**المشاكل:**
-
-| # | Issue |
-|---|-------|
-| Categories CRUD **public** | security |
-| Two separate `auth:sanctum` groups | merge |
-| Meals listing requires auth | unusual |
-| `resend-otp` outside auth group but public | OK but no rate limit |
-| Inconsistent indentation | style |
+| # | Issue | Severity |
+|---|-------|----------|
+| Categories CRUD **public** | unauthorized writes | 🔴 |
+| Two separate `auth:sanctum` groups | merge for clarity | 🟡 |
+| Meals listing requires auth | unusual for catalog | 🟡 |
+| `resend-otp` public — **no rate limit** | brute force | 🔴 |
+| Order status update inside auth group but **no ownership** | IDOR | 🔴 |
 
 ---
 
@@ -364,7 +441,7 @@ Controllers return raw Eloquent models everywhere.
 
 | Migration | Notes |
 |-----------|-------|
-| `users` + phone/otp + profile fields | ✅ |
+| `users` + phone/otp + profile fields | ✅ — OTP plain text |
 | `categories`, `meals`, `meal_images` | ✅ |
 | `carts` (unique user_id) | ✅ |
 | `cart_items` | 🟡 no unique(cart_id, meal_id) |
@@ -373,222 +450,260 @@ Controllers return raw Eloquent models everywhere.
 | `payments`, `notifications`, `reviews` | ✅ |
 | **`create_meals_table.php.php`** | 🔴 filename typo — double `.php` |
 
-**Schema concerns:**
-- OTP plain text in users table
-- Payment never transitions pending → paid
-- No indexes beyond FK defaults on hot columns
-
 ---
 
-### 4.14 Seeders — 🟡
+## 5. مشاكل أمنية
 
-| Seeder | Content |
-|--------|---------|
-| `PaymentMethodSeeder` | Cash, Visa |
-| `DatabaseSeeder` | PaymentMethodSeeder only |
+> **هذا القسم هو الأهم في المراجعة.** الثغرات التالية **يجب إصلاحها قبل أي demo أو deploy**.
 
-**Missing:** categories, meals, users seeders — demo data sparse vs MohamedAdel.
+### 5.1 ثغرات حرجة (P0 — فورًا)
 
----
+| # | الثغرة | الملف / Route | النوع | التأثير |
+|---|--------|---------------|-------|---------|
+| 1 | **Payment IDOR** — كل users يروا كل payments | `PaymentController` | IDOR | تسريب amounts, order data, PII |
+| 2 | **Order Status IDOR** — أي user يغيّر status أي order | `OrderController@updateStatus` | Privilege Escalation | cancel/deliver orders للغير |
+| 3 | **Public Category CRUD** | `routes/api.php` | Broken Access Control | deface/delete catalog |
+| 4 | **Hardcoded OTP `123456`** | `OtpService:13` | Auth Bypass | account takeover trivial |
+| 5 | **OTP exposed in API** | `AuthController@resendOtp` | Information Disclosure | OTP in JSON response |
+| 6 | **Reset password without OTP verify** | `AuthController@resetPassword` | Auth Bypass | reset أي account بالـ phone |
+| 7 | **Double password hashing** | register + reset | Logic Bug | login broken after register |
 
-## 5. Security Review
+### 5.2 ثغرات عالية (P1 — قبل demo)
 
-| Issue | Location | Risk | Priority |
-|-------|----------|------|----------|
-| **Hardcoded OTP `123456`** | OtpService:13 | Trivial account takeover | 🔴 P0 |
-| **OTP exposed in API** | AuthController:101 | Leak in response | 🔴 P0 |
-| **Password reset without OTP verify** | resetPassword:203–227 | Anyone resets with phone | 🔴 P0 |
-| **Double password hashing** | register:22, reset:219 | Login broken | 🔴 P0 |
-| **All payments visible** | PaymentController:14 | Data leak | 🔴 P0 |
-| **Order status by any user** | OrderController:132 | Privilege escalation | 🔴 P0 |
-| **Public category CRUD** | routes/api.php:64 | Unauthorized writes | 🔴 P1 |
-| **Address not ownership-checked** | OrderController:21 | Order to others' address | 🔴 P1 |
-| **No rate limiting** | auth/OTP routes | Brute force | 🔴 P1 |
-| **Exception messages in 500** | OrderController:99 | Info disclosure | 🟡 P2 |
-| **Full user in login response** | AuthController:61 | Field leakage | 🟡 P2 |
-| **Vonage unused** | composer.json | Misleading readiness | 🟢 P3 |
+| # | الثغرة | الملف | التأثير |
+|---|--------|-------|---------|
+| 8 | Address ownership not checked on checkout | `OrderController` | order shipped to others' address |
+| 9 | No rate limiting on OTP/auth routes | `routes/api.php` | brute force OTP |
+| 10 | Full `$user` model in login response | `AuthController` | OTP/password hash field leak risk |
+| 11 | Exception `$e->getMessage()` in 500 | `OrderController` | info disclosure |
+| 12 | `$request->all()` on category update | `CategoryController` | mass assignment |
 
----
+### 5.3 إصلاحات أمنية — Code Snippets
 
-## 6. خطة Refactor — الأولويات
-
-### المرحلة 0 — Critical Fixes (فورًا)
-
-- [ ] Replace hardcoded OTP with `random_int()` — never return in response
-- [ ] Fix password reset — require OTP verification token/session before reset
-- [ ] Fix double hashing — plain password, let cast handle it
-- [ ] Scope `PaymentController` to authenticated user's orders
-- [ ] Add ownership/admin check on `OrderController@updateStatus`
-- [ ] Move `categories` apiResource inside `auth:sanctum` (or admin middleware)
-- [ ] Verify `address_id` belongs to user on order create
-- [ ] Remove dead code in `logout` (lines 78–80)
-
-### المرحلة 1 — Wire Existing Scaffold
-
-- [ ] Implement Form Requests (Register, Login, Meal, Checkout/Order)
-- [ ] Use API Resources in all controllers
-- [ ] Delete or implement `CheckoutController`, `HomeController`
-- [ ] Fix `CartController@destroy` — return JSON response
-- [ ] Fix Category validation typo `nullable||image`
-
-### المرحلة 2 — Service Layer + Auth
-
-- [ ] `SmsGatewayInterface` + Vonage implementation
-- [ ] Rate limiting on OTP/auth routes
-- [ ] `UserResource` hides OTP fields
-- [ ] Policies: `OrderPolicy`, `PaymentPolicy`, `AddressPolicy`
-- [ ] Rename migration file `create_meals_table.php.php`
-
-### المرحلة 3 — Architecture
-
-- [ ] Actions: `PlaceOrderAction`, `RegisterAction`, etc.
-- [ ] Repository interfaces
-- [ ] `AppServiceProvider` bindings
-- [ ] Payment status workflow (pending → paid)
-- [ ] Unique constraint on cart_items(cart_id, meal_id)
-- [ ] Unique constraint on reviews(user_id, meal_id)
-
-### المرحلة 4 — Testing + Docs
-
-- [ ] Feature tests: auth, order, payment scoping, category auth
-- [ ] Fix `UserFactory` for phone-based model
-- [ ] Complete README endpoint table
-- [ ] Seeders for categories/meals
-- [ ] Pagination on list endpoints
-
----
-
-## 7. Exception-Based Error Handling
+**Payment Policy:**
 
 ```php
-// app/Exceptions/Auth/UnverifiedResetException.php
-class UnverifiedResetException extends Exception {}
-
-// resetPassword — after fixing flow
-if (!$this->resetTokenService->isValid($request->phone, $request->reset_token)) {
-    throw new UnverifiedResetException();
-}
-```
-
----
-
-## 8. Testing Strategy
-
-| الطبقة | نوع الاختبار | Priority |
-|--------|-------------|----------|
-| PaymentController | Feature — must NOT see other users' payments | 🔴 |
-| OrderController@updateStatus | Feature — must NOT update others' orders | 🔴 |
-| Auth reset flow | Feature — must require OTP verification | 🔴 |
-| Category CRUD | Feature — must require auth for writes | 🔴 |
-| Cart / Order | Feature — happy path | 🟡 |
-
-```php
-public function test_user_cannot_see_other_users_payments(): void
+// app/Policies/PaymentPolicy.php
+public function view(User $user, Payment $payment): bool
 {
-    $userA = User::factory()->create();
-    $userB = User::factory()->create();
-    // create payment for userB's order
+    return $payment->order->user_id === $user->id;
+}
 
-    $this->actingAs($userA)
-        ->getJson('/api/payments')
-        ->assertJsonMissing(['order_id' => $orderB->id]);
+// PaymentController
+public function show(Payment $payment)
+{
+    $this->authorize('view', $payment);
+    return new PaymentResource($payment->load('order'));
+}
+```
+
+**Order Status — Admin Only:**
+
+```php
+// bootstrap/app.php or RouteServiceProvider
+Route::put('orders/{order}/status', [OrderController::class, 'updateStatus'])
+    ->middleware(['auth:sanctum', 'admin']);
+```
+
+**Category Routes Split:**
+
+```php
+Route::get('categories', [CategoryController::class, 'index']);
+Route::get('categories/{category}', [CategoryController::class, 'show']);
+
+Route::middleware(['auth:sanctum', 'admin'])->group(function () {
+    Route::apiResource('categories', CategoryController::class)->except(['index', 'show']);
+});
+```
+
+**Reset Password — Require Verified Token:**
+
+```php
+// verify-reset-otp stores token in cache
+Cache::put("reset:{$phone}", true, now()->addMinutes(10));
+
+// reset-password checks cache
+if (!Cache::pull("reset:{$request->phone}")) {
+    return response()->json(['message' => 'OTP not verified'], 403);
+}
+```
+
+### 5.4 Security Scorecard
+
+| Area | Score | Notes |
+|------|-------|-------|
+| Authentication | 35% | OTP hardcoded + exposed + reset broken |
+| Authorization | 25% | IDOR on payments + orders + public writes |
+| Input Validation | 45% | inline only — scaffold unused |
+| Data Exposure | 40% | raw models, OTP in response |
+| Rate Limiting | 10% | none on auth/OTP |
+| **Overall Security** | **~31%** | **blocks production use** |
+
+---
+
+## 6. ما هو جيد ✅
+
+1. **Broad feature coverage** — 14 controller، 14 model — أوسع domain model في Bootcamp.
+2. **Full customer journey** — register → verify → browse → cart → Stripe checkout → orders → notifications.
+3. **Stripe integration** — charge on checkout داخل order flow.
+4. **README project-specific** — يوثّق endpoints و features (نادر في Bootcamp).
+5. **DB transactions** — order creation wrapped in transaction.
+6. **Price snapshot** — order items تحفظ السعر وقت الطلب.
+7. **User-scoped resources** — addresses, favorites, reviews, notifications صح.
+8. **Review duplicate check** — prevents double review per meal.
+9. **Cart firstOrCreate pattern** — one cart per user.
+10. **Sanctum** — protected routes behind `auth:sanctum` (except categories write).
+11. **Scaffold awareness** — Form Requests + Resources files exist (need wiring).
+12. **Custom Notification model** — works for order status updates.
+
+---
+
+## 7. خطة Refactor
+
+### Sprint 0 — Security Fixes (P0 — **قبل أي شيء**)
+
+1. Scope `PaymentController` to authenticated user's orders — or delete endpoints
+2. Add admin middleware OR ownership check on `OrderController@updateStatus`
+3. Move category write routes behind `auth:sanctum` + `admin`
+4. Replace hardcoded OTP with `random_int()` — never return in response
+5. Fix password reset chain — cache token after verify-reset-otp
+6. Fix double hashing — plain password, let cast handle it
+7. Verify `address_id` belongs to user on order create
+8. Add rate limiting: `throttle:3,5` on OTP routes
+
+### Sprint 1 — Wire Existing Scaffold (P1)
+
+9. Implement Form Requests (Register, Login, Meal, Checkout/Order)
+10. Implement API Resources — hide OTP, internal fields
+11. Fix `CartController@destroy` — return JSON response
+12. Fix Category validation typo + add validation on update
+13. Delete or implement `CheckoutController`, `HomeController`
+
+### Sprint 2 — Architecture (P2)
+
+14. `SmsGatewayInterface` + Vonage implementation (or remove Vonage)
+15. `PlaceOrderAction` — extract Stripe + transaction from OrderController
+16. Policies: `OrderPolicy`, `PaymentPolicy`, `AddressPolicy`, `CategoryPolicy`
+17. `ApiResponse` trait for consistent envelope
+18. Payment status workflow: pending → paid after Stripe success
+19. Unique constraint on `cart_items(cart_id, meal_id)`
+
+### Sprint 3 — Quality (P3)
+
+20. Feature tests: **security scenarios first** (payment IDOR, order status, category auth)
+21. Rename migration `create_meals_table.php.php`
+22. Seeders for categories/meals demo data
+23. Settings module + Admin module
+24. Pagination on list endpoints
+
+---
+
+## 8. Controller المستهدف (مثال: Payment Index — بعد إصلاح IDOR)
+
+```php
+// ❌ Before — IDOR
+public function index()
+{
+    return Payment::with('order')->get();
+}
+
+// ✅ After — thin + authorized
+public function index(Request $request, ListUserPaymentsAction $action): JsonResponse
+{
+    $payments = $action->execute($request->user());
+
+    return response()->json([
+        'data' => PaymentResource::collection($payments),
+    ]);
+}
+
+// ListUserPaymentsAction
+public function execute(User $user): Collection
+{
+    return Payment::whereHas('order', fn ($q) =>
+        $q->where('user_id', $user->id)
+    )->with('order')->latest()->get();
 }
 ```
 
 ---
 
-## 9. Code Style & Conventions
+## 9. File-by-File Scorecard
 
-| القاعدة | الوضع الحالي | المطلوب |
-|---------|-------------|---------|
-| Namespace | `App\Http\Controllers\API` | ✅ PascalCase (consistent) |
-| Validation | Inline in controllers | Form Requests (already scaffolded) |
-| Response format | Inconsistent `{ message }` vs raw arrays | ApiResponse trait |
-| Password hashing | Double hash in register/reset | Cast only |
-| OTP | Hardcoded + exposed | random + SMS only |
-| Dead code | logout, profile method | Remove |
-| File naming | `create_meals_table.php.php` | Fix typo |
-| Comments | Arabic mixed | PHPDoc English |
-
----
-
-## 10. ملخص الأولويات (Action Items)
-
-### 🔴 Critical (اعملها فورًا)
-
-1. Fix **hardcoded OTP** + remove from API response
-2. Fix **password reset** — require verified OTP session
-3. Fix **double password hashing**
-4. Scope **PaymentController** to current user
-5. Fix **OrderController@updateStatus** authorization
-6. Protect **categories** write routes with auth/admin
-7. Verify **address ownership** on checkout
-
-### 🟡 High (قبل demo)
-
-8. Wire Form Requests + API Resources (already exist!)
-9. Rate limiting on auth/OTP
-10. Fix CartController destroy response
-11. Implement Vonage SMS or remove dependency
-12. Payment status workflow
-13. Policies for Order, Payment, Address
-
-### 🟢 Medium (أثناء التطوير)
-
-14. Actions + Repository layer
-15. Delete/implement CheckoutController, HomeController
-16. Feature tests for security scenarios
-17. Seeders for demo data
-18. Pagination
-19. Public meal browse routes (optional)
-20. Complete README endpoints
+| File | Thin | Form Request | Service/Action | Authorization | ApiResponse/Resource | Verdict |
+|------|:----:|:------------:|:--------------:|:-------------:|:--------------------:|---------|
+| `AuthController` | ❌ | ❌ scaffold | 🟡 OtpService | 🔴 OTP leaks | ❌ raw user | 🔴 |
+| `OtpService` | — | — | 🔴 hardcoded | — | — | 🔴 |
+| `OrderController` | ❌ | ❌ | ❌ | 🔴 status IDOR | ❌ | 🔴 |
+| `PaymentController` | ✅ | — | ❌ | 🔴 **IDOR** | ❌ | 🔴 |
+| `CategoryController` | ❌ | ❌ | ❌ | 🔴 public writes | ❌ | 🔴 |
+| `MealController` | ❌ | ❌ scaffold | ❌ | 🟡 auth on read | ❌ scaffold | 🟡 |
+| `CartController` | ❌ | ❌ | ❌ | ✅ scoped | ❌ | 🟡 |
+| `AddressController` | 🟡 | ❌ | ❌ | ✅ scoped | ❌ | 🟡 |
+| `FavoriteController` | ✅ | ❌ | ❌ | ✅ | ❌ | 🟡 |
+| `ReviewController` | 🟡 | ❌ | ❌ | ✅ | ❌ | 🟡 |
+| `ProfileController` | ❌ | ❌ | ❌ | ✅ | ❌ scaffold | 🟡 |
+| `NotificationController` | ✅ | — | ❌ | ✅ | ❌ | 🟡 |
+| `PaymentMethodController` | ✅ | — | ❌ | ✅ read-only | ❌ | ✅ |
+| Form Requests (4) | — | 🔴 empty | — | — | — | 🔴 |
+| API Resources (4) | — | — | — | — | 🔴 unused | 🔴 |
+| Tests | — | — | — | — | — | 🔴 |
 
 ---
 
-## 11. ما تم تنفيذه vs الناقص
+## 10. مقارنة مع مشاريع Bootcamp
 
-### ✅ مُنفَّذ (Functional)
+| المعيار | Yossef | Abdella | Mohamed Esmail | Ali |
+|---------|:------:|:-------:|:--------------:|:---:|
+| Feature completeness | ~70% | ~70% | ~83% | ~76% |
+| **Weighted (security)** | **~58%** | ~68% | ~78% | ~72% |
+| Stripe / Payment | ✅ checkout | ✅ Cashier | 🟡 pending | ✅ checkout |
+| Domain breadth | ✅ widest | 🟡 | 🟡 | 🟡 |
+| README | ✅ | ❌ default | ❌ | 🟡 |
+| Form Requests | scaffold unused | 🟡 3 files | 🟡 partial | ✅ many |
+| Authorization | 🔴 **critical IDOR** | 🟡 partial | 🟡 | 🟡 |
+| OTP security | 🔴 worst | ✅ hashed | 🟡 | 🟡 |
+| Actions layer | ❌ | ❌ | ❌ | 🟡 partial |
+| Admin | ❌ | ❌ | ✅ web | 🟡 |
 
-- Register → OTP verify → login/logout
-- Forgot/reset password (broken security)
-- Profile with image upload
-- Categories CRUD (unprotected writes)
-- Meals CRUD, search, filter by category
-- Cart add/update/clear
-- Orders create, list, show, track
-- Addresses CRUD
-- Favorites
-- Payment methods (read)
-- Payments (unscoped leak)
-- Custom notifications
-- Reviews with average rating
-- Project README
-
-### ❌ Scaffold / Broken / Missing
-
-- Form Requests (4 files — unused)
-- API Resources (4 files — unused)
-- CheckoutController, HomeController (empty)
-- Vonage SMS (config only)
-- Actions, Repositories, Policies
-- Feature tests
-- Payment pending → paid transition
-- Rich seeders
+**نقطة قوة Yossef:** أوسع تغطية features + README + Stripe checkout + reviews/addresses.  
+**نقطة ضعف:** **أخطر authorization gaps في Bootcamp** — payments IDOR + order status IDOR + public category CRUD.
 
 ---
 
-## 12. مقارنة سريعة مع مشاريع FoodIfy
+## 11. ملخص الأولويات (Action Items)
 
-| Feature | Yossef | MohamedAdel | Mostafa |
-|---------|--------|-------------|---------|
-| Domain breadth | ✅ widest (14 models) | ✅ | 🟡 |
-| README | ✅ project-specific | ❌ default | ❌ default |
-| Form Requests | scaffold unused | ✅ Auth | ❌ |
-| API Resources | scaffold unused | ❌ | ❌ |
-| Actions | ❌ | ✅ | ❌ |
-| Payment integration | records only | Paymob Strategy | Stripe inline |
-| Authorization | 🔴 critical gaps | 🟡 | 🟡 |
-| OTP security | 🔴 worst (hardcoded) | 🟡 | 🔴 exposed |
+### 🔴 Critical — Security (اعملها **اليوم**)
+
+1. **Fix Payment IDOR** — scope `PaymentController` to `$request->user()` orders only
+2. **Fix Order Status IDOR** — admin middleware OR ownership + status whitelist
+3. **Protect Category writes** — `auth:sanctum` + `admin` on POST/PUT/DELETE
+4. **Replace hardcoded OTP** — `random_int()` + SMS — never in response
+5. **Fix password reset chain** — require verified OTP session/token before reset
+6. **Fix double password hashing** — remove `Hash::make()` where cast exists
+7. **Verify address ownership** on checkout — `Rule::exists` with `user_id`
+8. **Add rate limiting** on OTP/auth routes
+
+### 🟡 High — قبل demo
+
+9. Wire Form Requests + API Resources (already scaffolded!)
+10. Hide OTP/sensitive fields via `UserResource`
+11. Fix `CartController@destroy` empty response
+12. Implement Vonage SMS or remove unused dependency
+13. Payment status: pending → paid after Stripe success
+14. Policies: `OrderPolicy`, `PaymentPolicy`, `AddressPolicy`
+15. Remove dead code: `logout` duplicate return, unused `profile` in AuthController
+
+### 🟢 Medium — أثناء التطوير
+
+16. `PlaceOrderAction` — extract Stripe + transaction
+17. Feature tests for **all security scenarios**
+18. Settings module + Admin module
+19. Public meal browse (GET without auth)
+20. Seeders for demo data
+21. Fix migration filename typo
+22. Pagination on lists
+23. Unique constraints: cart_items, reviews
 
 ---
 
@@ -596,26 +711,104 @@ public function test_user_cannot_see_other_users_payments(): void
 
 > **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
 
+### 13.1 Feature Matrix
+
+| # | Feature | الحالة | Route / Implementation | النواقص |
+|---|---------|--------|------------------------|---------|
+| 1 | **Authentication** | 🟡 **70%** | register, login, logout, verify-otp | OTP hardcoded + exposed |
+| 2 | **Reset Password** | 🔴 **45%** | forgot, verify-reset, reset | reset without OTP verify |
+| 3 | **Profile** | ✅ **88%** | show, update, image upload/delete | no change-password |
+| 4 | **Categories** | 🟡 **75%** | apiResource CRUD | **write ops public** |
+| 5 | **Category Details** | ✅ **85%** | show with meals | — |
+| 6 | **Meals** | ✅ **85%** | CRUD, search, filter | auth required for GET |
+| 7 | **Meal Details** | ✅ **88%** | show with images | — |
+| 8 | **Favorites** | ✅ **92%** | index, store, destroy | — |
+| 9 | **Cart** | ✅ **88%** | index, add, update, destroy | destroy no JSON |
+| 10 | **Checkout** | ✅ **82%** | order create + Stripe | fat controller |
+| 11 | **Payment** | 🔴 **55%** | Stripe + payments index/show | **IDOR leak** |
+| 12 | **My Orders** | 🟡 **78%** | index, show, track | **status update IDOR** |
+| 13 | **Order Details** | ✅ **85%** | show scoped | — |
+| 14 | **Notifications** | ✅ **90%** | index, mark read | — |
+| 15 | **Addresses** | ✅ **88%** | CRUD scoped | update no validation |
+| 16 | **Reviews** | ✅ **85%** | CRUD + avg rating | no DB unique |
+| 17 | **Settings** | 🔴 **0%** | — | — |
+| 18 | **Admin** | 🔴 **0%** | — | — |
+
 **Overall Feature Completeness: ~70%**
 
-### 13.1 Summary
+### 13.2 Weighted Score (Security-Adjusted)
 
-| Area | Score | Notes |
-|------|-------|-------|
-| Orders + Favorites + Notifications | 90% | strong |
-| Settings + Admin | 0% | missing |
-| Security issues (public category CRUD, payment leak) | — | needs fix |
-| **Overall** | **~70%** | |
+| Category | Feature Score | Security Multiplier | Weighted |
+|----------|:-------------:|:-------------------:|:--------:|
+| Auth + Reset | 58% | ×0.55 (OTP/reset broken) | 32% |
+| Profile + Catalog | 82% | ×0.70 (public category writes) | 57% |
+| Cart + Favorites | 90% | ×0.95 | 86% |
+| Checkout + Payment + Orders | 72% | ×0.45 (IDOR critical) | 32% |
+| Notifications + Reviews | 88% | ×0.95 | 84% |
+| Settings + Admin | 0% | — | 0% |
+| **Overall Weighted** | **~70%** | — | **~58%** |
+
+> **Interpretation:** الـ features موجودة، لكن **Checkout/Payment/Orders و Auth** — اللي هي core business — فيها ثغرات تمنع production use.
+
+### 13.3 Route Map
+
+```
+POST /api/register, /login, /logout                    ✅
+POST /api/resend-otp, /verify-otp                      ✅ (🔴 OTP leak)
+POST /api/forgot-password, /verify-reset-otp, /reset   🟡 (🔴 reset broken)
+
+GET/POST/PUT/DELETE /api/categories                    🔴 writes PUBLIC
+GET/POST/PUT/DELETE /api/meals                         ✅ (auth required)
+/api/cart/*, /api/addresses/*, /api/favorites/*        ✅
+/api/orders/* (create, index, show, track, status)    🟡 (🔴 status IDOR)
+/api/payments/*                                        🔴 (IDOR)
+/api/notifications/*, /api/reviews/*, /api/profile/*   ✅
+/api/payment-methods/*                                 ✅ read-only
+
+/api/settings, /admin/*                                ❌
+```
+
+### 13.4 Database Tables
+
+| Table | موجود | API Wired | Security |
+|-------|-------|-----------|----------|
+| `users` | ✅ | Auth + Profile | 🔴 OTP plain text |
+| `categories`, `meals`, `meal_images` | ✅ | Catalog | 🔴 public writes |
+| `carts`, `cart_items` | ✅ | Cart | ✅ scoped |
+| `favorites` | ✅ | Favorites | ✅ |
+| `addresses` | ✅ | Addresses | ✅ scoped |
+| `orders`, `order_items` | ✅ | Orders | 🔴 status IDOR |
+| `payments` | ✅ | Payments | 🔴 IDOR |
+| `notifications`, `reviews` | ✅ | ✅ | ✅ |
+| `payment_methods` | ✅ | read-only | ✅ |
+| `settings` | ❌ | — | — |
+
+### 13.5 Feature Completeness Scorecard
+
+| Category | Feature Score | Weighted Score |
+|----------|:-------------:|:--------------:|
+| Auth + Reset + Phone Verify | 58% | 32% |
+| Profile + Catalog | 82% | 57% |
+| Cart + Favorites + Addresses | 90% | 86% |
+| Checkout + Stripe + Orders | 72% | 32% |
+| Payments | 55% | 25% |
+| Notifications + Reviews | 88% | 84% |
+| Settings + Admin | 0% | 0% |
+| **Overall** | **~70%** | **~58%** |
+
 ---
 
 ## 14. المراجع
 
+- [Laravel Sanctum](https://laravel.com/docs/sanctum)
+- [Laravel Cashier (Stripe)](https://laravel.com/docs/cashier)
 - [Laravel Form Requests](https://laravel.com/docs/validation#form-request-validation)
 - [Laravel API Resources](https://laravel.com/docs/eloquent-resources)
 - [Laravel Policies](https://laravel.com/docs/authorization#creating-policies)
-- [Vonage SMS Laravel](https://github.com/Vonage/vonage-laravel)
-- [Laravel Sanctum](https://laravel.com/docs/sanctum)
+- [OWASP IDOR Prevention](https://cheatsheetseries.owasp.org/cheatsheets/Insecure_Direct_Object_Reference_Prevention_Cheat_Sheet.html)
+- مراجعة Abdella: [abdella/FoodIfy/CODE_REVIEW.md](../../abdella/FoodIfy/CODE_REVIEW.md)
+- مراجعة Mohamed Esmail: [mohamedEsmail/FoodIfy/CODE_REVIEW.md](../../mohamedEsmail/FoodIfy/CODE_REVIEW.md)
 
 ---
 
-*هذا الملف مرجع حي — حدّثه مع كل refactor أو module جديد.*
+*هذا الملف مرجع حي — حدّثه مع كل refactor أو security fix.*
