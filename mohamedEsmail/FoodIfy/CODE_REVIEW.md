@@ -3,7 +3,7 @@
 > **الهدف:** Controllers رفيعة تمامًا — بدون validation وبدون business logic.  
 > كل المنطق في Actions / Services / Repositories مع تطبيق SOLID في كل الطبقات.
 
-**تاريخ المراجعة:** 2 يوليو 2026  
+**تاريخ المراجعة:** 2 يوليو 2026   (تحديث — Feature Completeness)
 **الطالب:** Mohamed Esmail  
 **المستودع:** [aborafe/foodify](https://github.com/aborafe/foodify)  
 **النطاق:** `app/` — Auth + Business APIs (catalog, cart, checkout, orders, notifications)
@@ -548,7 +548,63 @@ final class CheckoutController extends Controller
 
 ---
 
-## 12. المراجع
+## 13. تقرير Feature Completeness — النواقص في الـ Application
+
+> **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
+
+### 13.1 Feature Matrix
+
+| # | Feature | الحالة | Route / Implementation | النواقص |
+|---|---------|--------|------------------------|---------|
+| 1 | **Authentication** | ✅ **95%** | register, verify, login, logout | Vonage SMS required in prod |
+| 2 | **Reset Password** | ✅ **95%** | forgot → verify → reset | — |
+| 3 | **Profile** | 🟡 **85%** | GET/PATCH /api/profile | no change-password |
+| 4 | **Categories** | ✅ **100%** | index + home | — |
+| 5 | **Category Details** | 🟡 **75%** | `GET /categories/{cat}/meals` | no standalone category show |
+| 6 | **Meals** | 🟡 **70%** | home + category meals | **no `GET /api/meals` list** |
+| 7 | **Meal Details** | ✅ **100%** | `GET /api/meals/{meal}` | — |
+| 8 | **Favorites** | ✅ **100%** | full CRUD | tested ✅ |
+| 9 | **Cart** | ✅ **100%** | full lifecycle | — |
+| 10 | **Checkout** | 🟡 **90%** | `POST /api/checkout` | payment stays pending |
+| 11 | **Payment** | 🟡 **55%** | payment-methods CRUD | **no gateway / confirm** |
+| 12 | **My Orders** | ✅ **100%** | `GET /api/orders` | — |
+| 13 | **Order Details** | ✅ **95%** | show + cancel | — |
+| 14 | **Notifications** | 🟡 **75%** | list, mark read | **no auto-create on order events** |
+| 15 | **Settings** | 🔴 **0%** | — | **غير موجود** |
+| 16 | **Admin** | 🔴 **0%** | — | **غير موجود** |
+
+**Overall Feature Completeness: ~77%**
+
+### 13.2 Gaps & Issues
+
+| المشكلة | Impact |
+|---------|--------|
+| Payment always `pending` after checkout | no completion flow |
+| No event-driven notifications | notifications table empty |
+| DatabaseSeeder MySQL-only (`FOREIGN_KEY_CHECKS`) | SQLite tests may fail |
+| Missing Admin + Settings modules | bootcamp requirement gap |
+
+### 13.3 Route Map
+
+```
+/api/auth/*, /profile, /cart, /favorites, /checkout, /orders   ✅
+/api/notifications (read-only)                                  🟡
+/api/settings, /admin/*                                         ❌
+```
+
+### 13.4 Feature Completeness Scorecard
+
+| Category | Score |
+|----------|-------|
+| Auth + Commerce core | 90% |
+| Payment | 55% |
+| Notifications | 75% |
+| Settings + Admin | 0% |
+| **Overall** | **~77%** |
+
+---
+
+## 13. المراجع
 
 - [Laravel Form Requests](https://laravel.com/docs/validation#form-request-validation)
 - [Laravel Sanctum](https://laravel.com/docs/sanctum)

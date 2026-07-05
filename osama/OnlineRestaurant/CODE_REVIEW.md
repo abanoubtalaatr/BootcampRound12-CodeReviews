@@ -3,7 +3,7 @@
 > **الهدف:** Controllers رفيعة تمامًا — بدون validation وبدون business logic.  
 > كل المنطق في Actions / Services / Repositories مع تطبيق SOLID في كل الطبقات.
 
-**تاريخ المراجعة:** 2 يوليو 2026  
+**تاريخ المراجعة:** 2 يوليو 2026   (تحديث — Feature Completeness)
 **الطالب:** Osama  
 **المستودع:** [osama726/online-restaurant](https://github.com/osama726/online-restaurant)  
 **النطاق:** `app/` — Domain layer (models, migrations, enums) مُنفَّذ + Application layer (API) غير مُنفَّذ بعد
@@ -663,7 +663,71 @@ final class ProductController extends Controller
 
 ---
 
-## 13. المراجع
+## 13. تقرير Feature Completeness — النواقص في الـ Application
+
+> **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Products, Reset Password, Category Details, Product Details, Settings, Payments/Checkout.
+
+**ملاحظة:** المشروع **Online Restaurant** — يستخدم **Product** بدل Meal. Schema-first: migrations + models جاهزة، API layer شبه فارغ.
+
+### 13.1 Feature Matrix
+
+| # | Feature | الحالة | Route / Implementation | النواقص |
+|---|---------|--------|------------------------|---------|
+| 1 | **Authentication** | 🔴 **15%** | — | Sanctum + User only; **no register/login** |
+| 2 | **Reset Password** | 🔴 **10%** | — | `password_reset_tokens` table unused |
+| 3 | **Profile** | 🔴 **20%** | — | User model fields only |
+| 4 | **Categories** | 🔴 **25%** | — | schema + model only |
+| 5 | **Category Details** | 🔴 **25%** | — | pivot `category_product` exists |
+| 6 | **Products (Meals)** | 🔴 **25%** | — | schema + model only |
+| 7 | **Product Details** | 🔴 **25%** | — | relations defined, no API |
+| 8 | **Favorites** | 🔴 **25%** | — | schema only |
+| 9 | **Cart** | 🔴 **25%** | — | schema only |
+| 10 | **Checkout** | 🔴 **20%** | — | orders table exists |
+| 11 | **Payment** | 🔴 **25%** | — | schema + enums only |
+| 12 | **My Orders** | 🔴 **25%** | — | schema only |
+| 13 | **Order Details** | 🔴 **25%** | — | schema only |
+| 14 | **Notifications** | 🔴 **5%** | — | Notifiable only; no table |
+| 15 | **Settings** | 🔴 **0%** | — | — |
+| 16 | **Admin** | 🔴 **15%** | — | Spatie roles seeded; **no routes** |
+
+**Overall Feature Completeness: ~19%**
+
+### 13.2 Actual Routes (only 3)
+
+```
+GET  /api/user          auth:sanctum (no way to get token!)
+GET  /                    welcome view
+GET  /up                  health check
+```
+
+### 13.3 Critical Issues
+
+| المشكلة | Impact |
+|---------|--------|
+| No auth endpoints | cannot use API |
+| UserFactory missing `phone` | seeder fails |
+| Spatie roles unused | admin not enforceable |
+| README promises Services/Resources | none exist |
+
+### 13.4 Database vs API
+
+| Layer | Completion |
+|-------|------------|
+| Migrations / Models | ~65% |
+| Routes / Controllers | ~3% |
+| **Overall features** | **~19%** |
+
+### 13.5 Feature Completeness Scorecard
+
+| Category | Score |
+|----------|-------|
+| Schema design | 65% |
+| API implementation | 5% |
+| **Overall** | **~19%** |
+
+---
+
+## 14. المراجع
 
 - [Laravel Form Requests](https://laravel.com/docs/validation#form-request-validation)
 - [Laravel Sanctum](https://laravel.com/docs/sanctum)

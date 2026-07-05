@@ -3,7 +3,7 @@
 > **الهدف:** Controllers رفيعة تمامًا — بدون validation وبدون business logic.  
 > كل المنطق في Actions / Services / Repositories مع تطبيق SOLID في كل الطبقات.
 
-**تاريخ المراجعة:** 2 يوليو 2026  
+**تاريخ المراجعة:** 2 يوليو 2026   (تحديث — Feature Completeness)
 **الطالب:** Mohamed Ali (mo1734)  
 **المستودع:** [mo1734/Foodify](https://github.com/mo1734/Foodify.git)  
 **النطاق:** `app/` — Auth (OTP + WhatsApp) + Meals + Favorites + Cart (Payment methods غير مُنفَّذ)
@@ -461,7 +461,62 @@ final class RegisteredUserController extends Controller
 
 ---
 
-## 12. المراجع
+## 13. تقرير Feature Completeness — النواقص في الـ Application
+
+> **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
+
+### 13.1 Feature Matrix
+
+| # | Feature | الحالة | Route / Implementation | النواقص |
+|---|---------|--------|------------------------|---------|
+| 1 | **Authentication** | 🟡 **80%** | register, login, logout, verify-otp | WhatsApp OTP |
+| 2 | **Reset Password** | 🟡 **75%** | forgot-password, reset-password | OTP exposed in response |
+| 3 | **Profile** | 🔴 **0%** | — | غير موجود |
+| 4 | **Categories** | 🟡 **55%** | embedded in `GET /api/home` | no standalone list |
+| 5 | **Category Details** | 🟡 **25%** | `GET /api/meals?category={slug}` | no show endpoint |
+| 6 | **Meals** | ✅ **90%** | home, index, show | auth required |
+| 7 | **Meal Details** | ✅ **95%** | `GET /api/meals/{id}` | related meals ✅ |
+| 8 | **Favorites** | ✅ **90%** | list + toggle | — |
+| 9 | **Cart** | ✅ **90%** | add, update, remove, list | — |
+| 10 | **Checkout** | 🔴 **0%** | — | **no orders table** |
+| 11 | **Payment** | 🔴 **0%** | — | — |
+| 12 | **My Orders** | 🔴 **0%** | — | — |
+| 13 | **Order Details** | 🔴 **0%** | — | — |
+| 14 | **Notifications** | 🔴 **5%** | — | Notifiable only |
+| 15 | **Settings** | 🔴 **0%** | — | — |
+| 16 | **Admin** | 🔴 **0%** | — | — |
+
+**Overall Feature Completeness: ~38%**
+
+### 13.2 Critical Issues
+
+| المشكلة | Impact |
+|---------|--------|
+| OTP returned in register/forgot responses | security leak |
+| Tests/seeders use `email`; app uses `phone` | CI broken |
+| Email verification routes orphaned | dead code |
+| `FoodifySeeder` not called from DatabaseSeeder | empty catalog on fresh install |
+
+### 13.3 Route Map
+
+```
+/api/register, login, logout, verify-otp, reset-password   ✅
+/api/home, meals, favorites, cart                          ✅ (auth required)
+/api/checkout, /orders, /payments, /profile                ❌
+```
+
+### 13.4 Feature Completeness Scorecard
+
+| Category | Score |
+|----------|-------|
+| Auth + Catalog + Cart | 75% |
+| Commerce (checkout → payment → orders) | 0% |
+| Profile / Admin / Settings | 0% |
+| **Overall** | **~38%** |
+
+---
+
+## 13. المراجع
 
 - [ichtrojan/laravel-otp](https://github.com/ichtrojan/laravel-otp)
 - [Laravel Sanctum](https://laravel.com/docs/sanctum)

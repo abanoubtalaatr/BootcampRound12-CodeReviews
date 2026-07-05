@@ -3,7 +3,7 @@
 > **الهدف:** Controllers رفيعة تمامًا — بدون validation وبدون business logic.  
 > كل المنطق في Actions / Services / Repositories مع تطبيق SOLID في كل الطبقات.
 
-**تاريخ المراجعة:** 2 يوليو 2026  
+**تاريخ المراجعة:** 2 يوليو 2026   (تحديث — Feature Completeness)
 **الطالب:** Ali (ali-elmuzayan)  
 **المستودع:** [ali-elmuzayan/foodify-laravel-api](https://github.com/ali-elmuzayan/foodify-laravel-api)  
 **النطاق:** `app/` — Auth (JWT + OTP) مُنفَّذ جزئيًا + Global Search (scaffold) + باقي الـ domain غير مُنفَّذ
@@ -499,7 +499,60 @@ final class VerifyOTPController extends Controller
 
 ---
 
-## 12. المراجع
+## 13. تقرير Feature Completeness — النواقص في الـ Application
+
+> **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
+
+**Prefix:** `/api/v1`
+
+### 13.1 Feature Matrix
+
+| # | Feature | الحالة | Route / Implementation | النواقص |
+|---|---------|--------|------------------------|---------|
+| 1 | **Authentication** | 🟡 **65%** | login, register, logout, me, refresh, resend-otp | JWT works |
+| 2 | **Reset Password** | 🔴 **10%** | forgot/reset routes | **empty controllers — crashes** |
+| 3 | **Profile** | 🟡 **15%** | `GET /api/v1/auth/me` only | no update |
+| 4 | **Categories** | 🔴 **0%** | — | comment placeholder only |
+| 5 | **Category Details** | 🔴 **0%** | — | — |
+| 6 | **Meals** | 🟡 **5%** | — | `Meal` model only; no `Category` model |
+| 7 | **Meal Details** | 🔴 **0%** | — | — |
+| 8–13 | **Favorites → Orders** | 🔴 **0%** | — | not started |
+| 14 | **Notifications** | 🔴 **0%** | — | Notifiable only |
+| 15 | **Settings** | 🔴 **0%** | — | — |
+| 16 | **Admin** | 🔴 **5%** | — | `role` column; no routes |
+
+**Overall Feature Completeness: ~12%**
+
+### 13.2 Critical Bugs
+
+| المشكلة | الإصلاح |
+|---------|---------|
+| `VerifyOTPController` never checks OTP value | call `verifyOtp()` |
+| Forgot/Reset controllers empty | implement `store()` |
+| `Meal` references missing `Category` class | create model + migration |
+| Factory/seeder use `email`; app uses `phone` | align schema |
+
+### 13.3 Route Map
+
+```
+POST /api/v1/auth/login, register, logout, me, refresh   ✅
+POST /api/v1/auth/forgot-password, reset-password        ❌ broken
+GET  /api/v1/health                                      ✅
+categories, meals, cart, orders                        ❌ missing
+```
+
+### 13.4 Feature Completeness Scorecard
+
+| Category | Score |
+|----------|-------|
+| Authentication | 65% |
+| Reset Password | 10% |
+| Commerce modules | 0% |
+| **Overall** | **~12%** |
+
+---
+
+## 13. المراجع
 
 - [tymon/jwt-auth](https://github.com/tymondesigns/jwt-auth)
 - [Laravel Form Requests](https://laravel.com/docs/validation#form-request-validation)

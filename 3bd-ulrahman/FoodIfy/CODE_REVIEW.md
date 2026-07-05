@@ -3,7 +3,7 @@
 > **الهدف:** Controllers رفيعة تمامًا — بدون validation وبدون business logic.  
 > كل المنطق في Actions / Services / Repositories مع تطبيق SOLID في كل الطبقات.
 
-**تاريخ المراجعة:** 2 يوليو 2026  
+**تاريخ المراجعة:** 2 يوليو 2026   (تحديث — Feature Completeness)
 **الطالب:** 3bd-ulrahman (Abdul Rahman)  
 **المستودع:** [3bd-ulrahman/foodify](https://github.com/3bd-ulrahman/foodify)  
 **النطاق:** `app/` — Auth + Categories (مُنفَّذ) + باقي الـ domain (scaffold: models, resources, seeders)
@@ -520,7 +520,68 @@ final class AuthController extends Controller
 
 ---
 
-## 12. المراجع
+## 13. تقرير Feature Completeness — النواقص في الـ Application
+
+> **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
+
+**ملاحظة:** المشروع يستخدم **Meal** — schema جاهز لكن معظم الـ API غير مربوط.
+
+### 13.1 Feature Matrix (Required vs Implemented)
+
+| # | Feature | مطلوب | الحالة | Route / Implementation | النواقص |
+|---|---------|-------|--------|------------------------|---------|
+| 1 | **Authentication** | Register, Login, Logout, OTP | 🟡 **88%** | `POST /api/register`, `login`, `DELETE /api/logout`, `verify-otp` | OTP hardcoded `123456` |
+| 2 | **Reset Password** | Forgot OTP + Reset | 🟡 **92%** | `forgot-password`, `verify-otp`, `reset-password` | cache OTP; `password_reset_tokens` unused |
+| 3 | **Profile** | View + Update | 🔴 **15%** | `GET /api/user` only | no update endpoint |
+| 4 | **Categories** | List all | ✅ **85%** | `apiResource categories` | no auth on writes |
+| 5 | **Category Details** | Single + meals | 🟡 **55%** | `GET /api/categories/{category}` | meals not eager-loaded |
+| 6 | **Meals / Products** | List + filters | 🔴 **12%** | — | Model + Seeder only; **no routes** |
+| 7 | **Meal Details** | Single | 🔴 **0%** | — | **لا `GET /api/meals/{meal}`** |
+| 8 | **Favorites** | Add, Remove, List | 🔴 **10%** | — | table + model only |
+| 9 | **Cart** | View, Add, Remove | 🔴 **10%** | — | tables only |
+| 10 | **Checkout** | Place order | 🔴 **0%** | — | غير موجود |
+| 11 | **Payment** | Pay order | 🔴 **0%** | — | no gateway |
+| 12 | **My Orders** | List orders | 🔴 **10%** | — | schema only |
+| 13 | **Order Details** | Single order | 🔴 **10%** | — | schema only |
+| 14 | **Notifications** | List, Read | 🔴 **0%** | — | Notifiable only |
+| 15 | **Settings** | Preferences | 🔴 **0%** | — | غير موجود |
+| 16 | **Admin** | CRUD | 🔴 **0%** | — | غير موجود |
+
+**Overall Feature Completeness: ~26%**
+
+### 13.2 تفصيل النواقص
+
+#### 🔴 Must Build
+Meals API, Favorites, Cart, Checkout, Payment, Orders list/show, Notifications, Settings, Admin.
+
+#### 🟡 Broken
+- `$hiddent` typo in `User.php` — passwords may leak
+- Category POST/PUT/DELETE بدون auth
+- OTP hardcoded in `SendOtp.php`
+
+### 13.3 Route Map
+
+```
+/api/auth flows + /api/categories     ✅
+/api/meals, /favorites, /cart         ❌
+/api/checkout, /orders, /payments     ❌
+/api/notifications, /settings         ❌
+```
+
+### 13.4 Feature Completeness Scorecard
+
+| Category | Score | Status |
+|----------|-------|--------|
+| Auth & Reset | 90% | 🟡 |
+| Profile | 15% | 🔴 |
+| Catalog | 35% | 🔴 |
+| Commerce | 5% | 🔴 |
+| Notifications / Settings / Admin | 0% | 🔴 |
+| **Overall** | **~26%** | 🔴 |
+
+---
+
+## 13. المراجع
 
 - [Laravel Form Requests](https://laravel.com/docs/validation#form-request-validation)
 - [Laravel JSON:API Resources](https://laravel.com/docs/eloquent-resources#json-api)

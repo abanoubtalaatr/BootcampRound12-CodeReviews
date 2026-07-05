@@ -3,7 +3,7 @@
 > **الهدف:** Controllers رفيعة تمامًا — بدون validation وبدون business logic.  
 > كل المنطق في Actions / Services / Repositories مع تطبيق SOLID في كل الطبقات.
 
-**تاريخ المراجعة:** 4 يوليو 2026  
+**تاريخ المراجعة:** 4 يوليو 2026   (تحديث — Feature Completeness)
 **الطالب:** يوسف (Yossef / Yousef Mehrez)  
 **المشروع:** FoodIfy Backend API  
 **النطاق:** `app/` — Auth + Catalog + Cart + Orders + Addresses + Payments + Favorites + Reviews + Notifications
@@ -592,7 +592,65 @@ public function test_user_cannot_see_other_users_payments(): void
 
 ---
 
-## 13. المراجع
+## 13. تقرير Feature Completeness — النواقص في الـ Application
+
+> **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
+
+### 13.1 Feature Matrix
+
+| # | Feature | الحالة | Route / Implementation | النواقص |
+|---|---------|--------|------------------------|---------|
+| 1 | **Authentication** | 🟡 **88%** | register, verify, login, logout, resend-otp | OTP hardcoded |
+| 2 | **Reset Password** | 🟡 **65%** | forgot, verify-reset, reset | **reset skips OTP gate** |
+| 3 | **Profile** | 🟡 **85%** | GET/PUT /api/profile | fillable gaps |
+| 4 | **Categories** | 🟡 **80%** | apiResource (public!) | **anyone can CRUD categories** |
+| 5 | **Category Details** | ✅ **90%** | show + `{id}/meals` | — |
+| 6 | **Meals** | 🟡 **68%** | index (auth), search (public) | catalog behind auth |
+| 7 | **Meal Details** | 🟡 **72%** | show (auth) | — |
+| 8 | **Favorites** | ✅ **95%** | full CRUD | — |
+| 9 | **Cart** | 🟡 **88%** | full lifecycle | destroy missing return |
+| 10 | **Checkout** | 🟡 **55%** | `POST /api/orders` | CheckoutController empty stub |
+| 11 | **Payment** | 🟡 **50%** | read payments | **leaks all users' payments**; no gateway |
+| 12 | **My Orders** | ✅ **95%** | index + track | — |
+| 13 | **Order Details** | ✅ **95%** | show | — |
+| 14 | **Notifications** | ✅ **90%** | list, read, delete | — |
+| 15 | **Settings** | 🔴 **0%** | — | **غير موجود** |
+| 16 | **Admin** | 🔴 **0%** | — | meal/category CRUD unprotected |
+
+**Overall Feature Completeness: ~70%**
+
+### 13.2 Critical Security Issues
+
+| المشكلة | Impact |
+|---------|--------|
+| Category CRUD public (no auth) | data tampering |
+| Any user can update order status | `PUT /orders/{id}/status` |
+| PaymentController returns all payments | data leak |
+| Reset password without verify-reset-otp | account takeover risk |
+| OTP exposed in resend-otp response | security |
+
+### 13.3 Route Map
+
+```
+/api/auth/*, /profile, /cart, /favorites, /orders, /notifications   ✅
+/api/categories CRUD (public — no admin guard)                      🟡 risky
+/api/settings, /admin/*                                             ❌
+CheckoutController stub — unused                                    🟡
+```
+
+### 13.4 Feature Completeness Scorecard
+
+| Category | Score |
+|----------|-------|
+| Auth + Orders + Favorites + Notifications | 90% |
+| Catalog | 78% |
+| Checkout / Payment | 52% |
+| Settings + Admin | 0% |
+| **Overall** | **~70%** |
+
+---
+
+## 14. المراجع
 
 - [Laravel Form Requests](https://laravel.com/docs/validation#form-request-validation)
 - [Laravel API Resources](https://laravel.com/docs/eloquent-resources)

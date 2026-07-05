@@ -3,7 +3,7 @@
 > **الهدف:** Controllers رفيعة تمامًا — بدون validation وبدون business logic.  
 > كل المنطق في Actions / Services / Repositories مع تطبيق SOLID في كل الطبقات.
 
-**تاريخ المراجعة:** 4 يوليو 2026  
+**تاريخ المراجعة:** 4 يوليو 2026   (تحديث — Feature Completeness)
 **الطالب:** مصطفى (Mostafa)  
 **المشروع:** FoodIfy — Healthy Meal Delivery API  
 **النطاق:** `app/` — Auth + Catalog + Cart + Orders (Stripe) + Favorites + Ratings + Profile + Notifications
@@ -630,7 +630,64 @@ public function test_user_can_register_and_verify_otp(): void
 
 ---
 
-## 12. المراجع
+## 13. تقرير Feature Completeness — النواقص في الـ Application
+
+> **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
+
+### 13.1 Feature Matrix
+
+| # | Feature | الحالة | Route / Implementation | النواقص |
+|---|---------|--------|------------------------|---------|
+| 1 | **Authentication** | ✅ **95%** | register, login, logout, OTP | token on register before verify |
+| 2 | **Reset Password** | ✅ **90%** | send-otp + reset-password | OTP-based |
+| 3 | **Profile** | 🟡 **75%** | GET + PUT update | no phone/address/avatar update |
+| 4 | **Categories** | 🟡 **70%** | `GET /api/categories` | list only |
+| 5 | **Category Details** | 🔴 **35%** | — | workaround: `?category_id` on meals |
+| 6 | **Meals** | ✅ **90%** | index + show | no search/pagination |
+| 7 | **Meal Details** | 🟡 **80%** | `GET /api/meals/{id}` | no ratings on detail |
+| 8 | **Favorites** | ✅ **95%** | toggle + list | — |
+| 9 | **Cart** | 🟡 **85%** | add, get, remove | no set-quantity endpoint |
+| 10 | **Checkout** | 🟡 **55%** | `POST /api/orders/create` | merged with payment |
+| 11 | **Payment** | 🔴 **60%** | Stripe in createOrder | **`payment_status` column missing — runtime crash** |
+| 12 | **My Orders** | ✅ **90%** | `GET /api/orders` | — |
+| 13 | **Order Details** | 🔴 **15%** | — | **no `GET /api/orders/{id}`** |
+| 14 | **Notifications** | 🟡 **80%** | list + mark read | on order create only |
+| 15 | **Settings** | 🔴 **0%** | — | غير موجود |
+| 16 | **Admin** | 🔴 **0%** | — | غير موجود |
+
+**Overall Feature Completeness: ~63%**
+
+### 13.2 Critical Bugs
+
+| المشكلة | Impact |
+|---------|--------|
+| `payment_status` in controller but not in migration | **every order creation fails** |
+| `comment` on ratings not in schema | comments silently dropped |
+| `STRIPE_SECRET` missing from `.env.example` | card payments fail |
+| Seeded user cannot login without OTP | dev friction |
+
+### 13.3 Route Map
+
+```
+/api/auth/*, /categories, /meals, /cart, /favorites           ✅
+/api/orders/create, /orders, /profile, /notifications        ✅
+/api/orders/{id} (single order)                              ❌
+/api/settings, /admin/*                                      ❌
+```
+
+### 13.4 Feature Completeness Scorecard
+
+| Category | Score |
+|----------|-------|
+| Auth + Catalog + Cart + Orders list | 85% |
+| Payment | 60% (broken schema) |
+| Order Details | 15% |
+| Settings + Admin | 0% |
+| **Overall** | **~63%** |
+
+---
+
+## 13. المراجع
 
 - [Laravel Form Requests](https://laravel.com/docs/validation#form-request-validation)
 - [Laravel Sanctum](https://laravel.com/docs/sanctum)

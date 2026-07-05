@@ -3,7 +3,7 @@
 > **الهدف:** Controllers رفيعة تمامًا — بدون validation وبدون business logic.  
 > كل المنطق في Actions / Services / Repositories مع تطبيق SOLID في كل الطبقات.
 
-**تاريخ المراجعة:** 2 يوليو 2026  
+**تاريخ المراجعة:** 2 يوليو 2026   (تحديث — Feature Completeness)
 **الطالب:** Abdella (Abdallah Hefzy)  
 **المستودع:** [Abdallah-Hefzy/Foodify](https://github.com/Abdallah-Hefzy/Foodify)  
 **النطاق:** `app/` — Auth module فقط (لا يوجد domain modules بعد)
@@ -533,7 +533,52 @@ final class LoginController extends Controller
 
 ---
 
-## 11. المراجع
+## 13. تقرير Feature Completeness — النواقص في الـ Application
+
+> **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
+
+### 13.1 Feature Matrix
+
+| # | Feature | الحالة | Route / Implementation | النواقص |
+|---|---------|--------|------------------------|---------|
+| 1 | **Authentication** | 🟡 **85%** | register, login, logout, verify-phone | **syntax bug** in PhoneVerificationController |
+| 2 | **Reset Password** | 🟡 **80%** | send-otp, verify-otp, reset-password | dev_otp exposed |
+| 3 | **Profile** | 🔴 **0%** | — | غير موجود |
+| 4–13 | **Catalog → Orders** | 🔴 **0%** | — | **14 module غير مبني** |
+| 14 | **Notifications** | 🔴 **0%** | — | Notifiable only |
+| 15 | **Settings** | 🔴 **0%** | — | غير موجود |
+| 16 | **Admin** | 🔴 **0%** | — | غير موجود |
+
+**Overall Feature Completeness: ~10%** — Auth scaffold فقط.
+
+### 13.2 Critical Bugs
+
+| المشكلة | الملف |
+|---------|-------|
+| Missing `}` — verify-phone crashes | `PhoneVerificationController.php:42` |
+| `dev_otp` in responses | ForgotPasswordController |
+| Factory/seeder missing `phone` | tests fail |
+| No unique on `users.phone` | migration |
+
+### 13.3 Route Map
+
+```
+POST /api/register, /login, /logout              ✅
+POST /api/send-otp, /verify-otp, /reset-password ✅
+Everything else (catalog, cart, orders...)       ❌
+```
+
+### 13.4 Feature Completeness Scorecard
+
+| Category | Score |
+|----------|-------|
+| Auth + Reset | ~83% |
+| All other modules | 0% |
+| **Overall** | **~10%** |
+
+---
+
+## 12. المراجع
 
 - [Laravel Form Requests](https://laravel.com/docs/validation#form-request-validation)
 - [Laravel Sanctum](https://laravel.com/docs/sanctum)
