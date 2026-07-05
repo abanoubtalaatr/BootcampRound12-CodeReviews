@@ -537,45 +537,52 @@ final class LoginController extends Controller
 
 > **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
 
+**تاريخ التحديث:** 5 يوليو 2026 — بعد `git pull` من آخر commit على remote لكل مشروع.
+
+**ملاحظة:** بعد pull (+5 commits) — المشروع **تطور جذريًا** من auth-only إلى API شبه كامل مع Stripe payment methods.
+
 ### 13.1 Feature Matrix
 
 | # | Feature | الحالة | Route / Implementation | النواقص |
 |---|---------|--------|------------------------|---------|
-| 1 | **Authentication** | 🟡 **85%** | register, login, logout, verify-phone | **syntax bug** in PhoneVerificationController |
-| 2 | **Reset Password** | 🟡 **80%** | send-otp, verify-otp, reset-password | dev_otp exposed |
-| 3 | **Profile** | 🔴 **0%** | — | غير موجود |
-| 4–13 | **Catalog → Orders** | 🔴 **0%** | — | **14 module غير مبني** |
-| 14 | **Notifications** | 🔴 **0%** | — | Notifiable only |
-| 15 | **Settings** | 🔴 **0%** | — | غير موجود |
-| 16 | **Admin** | 🔴 **0%** | — | غير موجود |
+| 1 | **Authentication** | ✅ **92%** | register, login, logout, verify-phone | phone.verified middleware |
+| 2 | **Reset Password** | ✅ **88%** | send-otp, verify-otp, reset-password | throttle added |
+| 3 | **Profile** | ✅ **90%** | GET/PUT profile, upload-photo | — |
+| 4 | **Categories** | ✅ **90%** | `GET /api/category` | — |
+| 5 | **Category Details** | ✅ **90%** | `GET /api/category/{id}` | — |
+| 6 | **Meals** | 🟡 **75%** | `GET /api/home`, meal by id | no standalone `/meals` list |
+| 7 | **Meal Details** | ✅ **90%** | `GET /api/meal/{id}` | — |
+| 8 | **Favorites** | ✅ **95%** | index, store, destroy | — |
+| 9 | **Cart** | ✅ **90%** | index, add, remove | — |
+| 10 | **Checkout** | 🟡 **80%** | `POST /api/order/store` | no preview step |
+| 11 | **Payment** | 🟡 **78%** | payment-methods + Stripe setup-intent | Cashflow via Stripe |
+| 12 | **My Orders** | ✅ **92%** | `GET /api/order` | — |
+| 13 | **Order Details** | ✅ **92%** | `GET /api/order/show/{id}` | — |
+| 14 | **Notifications** | ✅ **88%** | index, unread, mark read | — |
+| 15 | **Settings** | 🔴 **0%** | — | — |
+| 16 | **Admin** | 🔴 **0%** | — | — |
 
-**Overall Feature Completeness: ~10%** — Auth scaffold فقط.
+**Overall Feature Completeness: ~70%** *(كان ~10% — تحليل قديم على نسخة auth-only)*
 
-### 13.2 Critical Bugs
-
-| المشكلة | الملف |
-|---------|-------|
-| Missing `}` — verify-phone crashes | `PhoneVerificationController.php:42` |
-| `dev_otp` in responses | ForgotPasswordController |
-| Factory/seeder missing `phone` | tests fail |
-| No unique on `users.phone` | migration |
-
-### 13.3 Route Map
+### 13.2 Route Map
 
 ```
-POST /api/register, /login, /logout              ✅
-POST /api/send-otp, /verify-otp, /reset-password ✅
-Everything else (catalog, cart, orders...)       ❌
+/api/home, /category, /meal/{id}           ✅
+/api/favorite/*, /cart/*, /profile/*       ✅
+/api/order/* (index, show, store)          ✅
+/api/notifications/*, /payment-methods/*   ✅
+/api/settings, /admin/*                    ❌
 ```
 
-### 13.4 Feature Completeness Scorecard
+### 13.3 Feature Completeness Scorecard
 
 | Category | Score |
 |----------|-------|
-| Auth + Reset | ~83% |
-| All other modules | 0% |
-| **Overall** | **~10%** |
-
+| Auth + Profile + Catalog | 88% |
+| Cart + Orders + Payment | 85% |
+| Notifications | 88% |
+| Settings + Admin | 0% |
+| **Overall** | **~70%** |
 ---
 
 ## 12. المراجع

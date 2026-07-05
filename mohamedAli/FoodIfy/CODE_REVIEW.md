@@ -465,55 +465,49 @@ final class RegisteredUserController extends Controller
 
 > **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
 
+**تاريخ التحديث:** 5 يوليو 2026 — بعد `git pull` من آخر commit على remote لكل مشروع. (+1 commit — **Checkout + Order model added**).
+
 ### 13.1 Feature Matrix
 
 | # | Feature | الحالة | Route / Implementation | النواقص |
 |---|---------|--------|------------------------|---------|
-| 1 | **Authentication** | 🟡 **80%** | register, login, logout, verify-otp | WhatsApp OTP |
-| 2 | **Reset Password** | 🟡 **75%** | forgot-password, reset-password | OTP exposed in response |
-| 3 | **Profile** | 🔴 **0%** | — | غير موجود |
-| 4 | **Categories** | 🟡 **55%** | embedded in `GET /api/home` | no standalone list |
-| 5 | **Category Details** | 🟡 **25%** | `GET /api/meals?category={slug}` | no show endpoint |
+| 1 | **Authentication** | 🟡 **80%** | register, login, logout, OTP | OTP leak |
+| 2 | **Reset Password** | 🟡 **75%** | forgot + reset | — |
+| 3 | **Profile** | 🔴 **0%** | — | — |
+| 4 | **Categories** | 🟡 **55%** | in home response | no standalone |
+| 5 | **Category Details** | 🟡 **25%** | filter by slug | — |
 | 6 | **Meals** | ✅ **90%** | home, index, show | auth required |
-| 7 | **Meal Details** | ✅ **95%** | `GET /api/meals/{id}` | related meals ✅ |
+| 7 | **Meal Details** | ✅ **95%** | show | — |
 | 8 | **Favorites** | ✅ **90%** | list + toggle | — |
-| 9 | **Cart** | ✅ **90%** | add, update, remove, list | — |
-| 10 | **Checkout** | 🔴 **0%** | — | **no orders table** |
-| 11 | **Payment** | 🔴 **0%** | — | — |
-| 12 | **My Orders** | 🔴 **0%** | — | — |
-| 13 | **Order Details** | 🔴 **0%** | — | — |
+| 9 | **Cart** | ✅ **90%** | full CRUD | — |
+| 10 | **Checkout** | 🟡 **70%** | `POST /api/checkout` | **NEW** — no payment gateway |
+| 11 | **Payment** | 🔴 **15%** | — | orders table only |
+| 12 | **My Orders** | 🔴 **20%** | — | **no GET /orders** |
+| 13 | **Order Details** | 🔴 **20%** | — | **no show route** |
 | 14 | **Notifications** | 🔴 **5%** | — | Notifiable only |
 | 15 | **Settings** | 🔴 **0%** | — | — |
 | 16 | **Admin** | 🔴 **0%** | — | — |
 
-**Overall Feature Completeness: ~38%**
+**Overall Feature Completeness: ~45%** *(كان ~38% — checkout added)*
 
-### 13.2 Critical Issues
-
-| المشكلة | Impact |
-|---------|--------|
-| OTP returned in register/forgot responses | security leak |
-| Tests/seeders use `email`; app uses `phone` | CI broken |
-| Email verification routes orphaned | dead code |
-| `FoodifySeeder` not called from DatabaseSeeder | empty catalog on fresh install |
-
-### 13.3 Route Map
+### 13.2 Route Map
 
 ```
-/api/register, login, logout, verify-otp, reset-password   ✅
-/api/home, meals, favorites, cart                          ✅ (auth required)
-/api/checkout, /orders, /payments, /profile                ❌
+/api/home, meals, favorites, cart              ✅
+POST /api/checkout                             ✅ NEW
+GET /api/orders, /orders/{id}                  ❌
+/api/profile, /payments, /admin                ❌
 ```
 
-### 13.4 Feature Completeness Scorecard
+### 13.3 Feature Completeness Scorecard
 
 | Category | Score |
 |----------|-------|
-| Auth + Catalog + Cart | 75% |
-| Commerce (checkout → payment → orders) | 0% |
+| Auth + Catalog + Cart | 80% |
+| Checkout | 70% |
+| Orders list/show + Payment | 18% |
 | Profile / Admin / Settings | 0% |
-| **Overall** | **~38%** |
-
+| **Overall** | **~45%** |
 ---
 
 ## 13. المراجع

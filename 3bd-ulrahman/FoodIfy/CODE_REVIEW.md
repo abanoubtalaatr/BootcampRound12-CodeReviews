@@ -524,61 +524,51 @@ final class AuthController extends Controller
 
 > **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
 
-**ملاحظة:** المشروع يستخدم **Meal** — schema جاهز لكن معظم الـ API غير مربوط.
+**تاريخ التحديث:** 5 يوليو 2026 — بعد `git pull` من آخر commit على remote لكل مشروع.
 
-### 13.1 Feature Matrix (Required vs Implemented)
+**ملاحظة:** بعد pull (+23 commits) — Meals + Cart + Orders APIs **اتضافوا**. لسه ناقص Favorites, Notifications, Settings, Admin, Payment gateway.
 
-| # | Feature | مطلوب | الحالة | Route / Implementation | النواقص |
-|---|---------|-------|--------|------------------------|---------|
-| 1 | **Authentication** | Register, Login, Logout, OTP | 🟡 **88%** | `POST /api/register`, `login`, `DELETE /api/logout`, `verify-otp` | OTP hardcoded `123456` |
-| 2 | **Reset Password** | Forgot OTP + Reset | 🟡 **92%** | `forgot-password`, `verify-otp`, `reset-password` | cache OTP; `password_reset_tokens` unused |
-| 3 | **Profile** | View + Update | 🔴 **15%** | `GET /api/user` only | no update endpoint |
-| 4 | **Categories** | List all | ✅ **85%** | `apiResource categories` | no auth on writes |
-| 5 | **Category Details** | Single + meals | 🟡 **55%** | `GET /api/categories/{category}` | meals not eager-loaded |
-| 6 | **Meals / Products** | List + filters | 🔴 **12%** | — | Model + Seeder only; **no routes** |
-| 7 | **Meal Details** | Single | 🔴 **0%** | — | **لا `GET /api/meals/{meal}`** |
-| 8 | **Favorites** | Add, Remove, List | 🔴 **10%** | — | table + model only |
-| 9 | **Cart** | View, Add, Remove | 🔴 **10%** | — | tables only |
-| 10 | **Checkout** | Place order | 🔴 **0%** | — | غير موجود |
-| 11 | **Payment** | Pay order | 🔴 **0%** | — | no gateway |
-| 12 | **My Orders** | List orders | 🔴 **10%** | — | schema only |
-| 13 | **Order Details** | Single order | 🔴 **10%** | — | schema only |
-| 14 | **Notifications** | List, Read | 🔴 **0%** | — | Notifiable only |
-| 15 | **Settings** | Preferences | 🔴 **0%** | — | غير موجود |
-| 16 | **Admin** | CRUD | 🔴 **0%** | — | غير موجود |
+### 13.1 Feature Matrix
 
-**Overall Feature Completeness: ~26%**
+| # | Feature | الحالة | Route / Implementation | النواقص |
+|---|---------|--------|------------------------|---------|
+| 1 | **Authentication** | 🟡 **92%** | register, login, logout, refresh, verify/resend OTP | OTP hardcoded |
+| 2 | **Reset Password** | 🟡 **92%** | forgot → verify → reset | cache OTP |
+| 3 | **Profile** | 🔴 **20%** | — | no profile update route |
+| 4 | **Categories** | ✅ **90%** | `apiResource categories` | writes بدون admin guard |
+| 5 | **Category Details** | ✅ **85%** | `GET /api/categories/{id}` | — |
+| 6 | **Meals** | ✅ **90%** | `apiResource meals` | **جديد بعد pull** |
+| 7 | **Meal Details** | ✅ **95%** | `GET /api/meals/{meal}` | — |
+| 8 | **Favorites** | 🔴 **0%** | — | schema exists, **no routes** |
+| 9 | **Cart** | 🟡 **85%** | `cart-items` apiResource + clear cart | **جديد** |
+| 10 | **Checkout** | 🟡 **75%** | `POST /api/orders` | merged with order create |
+| 11 | **Payment** | 🔴 **25%** | — | no Stripe/gateway endpoint |
+| 12 | **My Orders** | 🟡 **85%** | `GET /api/orders` | — |
+| 13 | **Order Details** | 🟡 **60%** | `PUT /api/orders/{order}` | **no GET show** |
+| 14 | **Notifications** | 🔴 **0%** | — | — |
+| 15 | **Settings** | 🔴 **0%** | — | — |
+| 16 | **Admin** | 🔴 **0%** | — | — |
 
-### 13.2 تفصيل النواقص
+**Overall Feature Completeness: ~54%** *(كان ~26% قبل pull)*
 
-#### 🔴 Must Build
-Meals API, Favorites, Cart, Checkout, Payment, Orders list/show, Notifications, Settings, Admin.
-
-#### 🟡 Broken
-- `$hiddent` typo in `User.php` — passwords may leak
-- Category POST/PUT/DELETE بدون auth
-- OTP hardcoded in `SendOtp.php`
-
-### 13.3 Route Map
+### 13.2 Route Map (بعد pull)
 
 ```
-/api/auth flows + /api/categories     ✅
-/api/meals, /favorites, /cart         ❌
-/api/checkout, /orders, /payments     ❌
-/api/notifications, /settings         ❌
+/api/meals (apiResource)              ✅ NEW
+/api/cart-items (apiResource)         ✅ NEW
+/api/orders GET/POST, PUT/{order}     ✅ NEW
+/api/favorites, /notifications        ❌
+/api/settings, /admin/*                 ❌
 ```
 
-### 13.4 Feature Completeness Scorecard
+### 13.3 Feature Completeness Scorecard
 
-| Category | Score | Status |
-|----------|-------|--------|
-| Auth & Reset | 90% | 🟡 |
-| Profile | 15% | 🔴 |
-| Catalog | 35% | 🔴 |
-| Commerce | 5% | 🔴 |
-| Notifications / Settings / Admin | 0% | 🔴 |
-| **Overall** | **~26%** | 🔴 |
-
+| Category | Score |
+|----------|-------|
+| Auth + Catalog + Cart + Orders | 88% |
+| Favorites / Notifications / Settings / Admin | 0% |
+| Payment | 25% |
+| **Overall** | **~54%** |
 ---
 
 ## 13. المراجع

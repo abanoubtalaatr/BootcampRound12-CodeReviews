@@ -656,55 +656,39 @@ public function test_forgot_password_reset_flow(): void
 
 > **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
 
+**تاريخ التحديث:** 5 يوليو 2026 — بعد `git pull` من آخر commit على remote لكل مشروع. (+3 commits — **Profile module added**).
+
 ### 13.1 Feature Matrix
 
 | # | Feature | الحالة | Route / Implementation | النواقص |
 |---|---------|--------|------------------------|---------|
-| 1 | **Authentication** | ✅ **95%** | register, verify-otp, login, logout, me | solid Actions layer |
-| 2 | **Reset Password** | 🟡 **70%** | forgot-password, reset-password | OTP consumed if verify-otp called first |
-| 3 | **Profile** | 🔴 **25%** | `GET /api/auth/me` only | no update |
-| 4 | **Categories** | 🟡 **75%** | `GET /api/meals/categories` | no dedicated show route |
-| 5 | **Category Details** | 🟡 **40%** | filter via `?category_id` | no `GET /categories/{id}` |
-| 6 | **Meals** | ✅ **90%** | index + search + show | auth required for browse |
-| 7 | **Meal Details** | ✅ **95%** | `GET /api/meals/{meal}` | — |
+| 1 | **Authentication** | ✅ **95%** | full OTP + Sanctum | — |
+| 2 | **Reset Password** | 🟡 **70%** | forgot + reset | OTP reuse bug |
+| 3 | **Profile** | ✅ **88%** | show, update, change-password, orders | **NEW after pull** |
+| 4 | **Categories** | 🟡 **75%** | via meals/categories | no category show |
+| 5 | **Category Details** | 🟡 **40%** | filter only | — |
+| 6 | **Meals** | ✅ **90%** | index + show | auth required |
+| 7 | **Meal Details** | ✅ **95%** | show | — |
 | 8 | **Favorites** | ✅ **95%** | full CRUD | — |
 | 9 | **Cart** | ✅ **95%** | full lifecycle | — |
-| 10 | **Checkout** | 🟡 **55%** | merged in `POST /api/orders` | no separate checkout step |
-| 11 | **Payment** | 🔴 **45%** | Paymob in order store | **enum mismatch** vodafone_cash/fawry vs wallet |
-| 12 | **My Orders** | ✅ **90%** | `GET /api/orders` | — |
-| 13 | **Order Details** | ✅ **95%** | `GET /api/orders/{order}` | ownership check ✅ |
-| 14 | **Notifications** | 🔴 **0%** | — | غير موجود |
-| 15 | **Settings** | 🔴 **0%** | — | غير موجود |
-| 16 | **Admin** | 🔴 **0%** | — | غير موجود |
+| 10 | **Checkout** | 🟡 **55%** | `POST /api/orders` | merged flow |
+| 11 | **Payment** | 🔴 **45%** | Paymob in order | enum mismatch vodafone_cash vs wallet |
+| 12 | **My Orders** | ✅ **90%** | index + show | — |
+| 13 | **Order Details** | ✅ **95%** | show | — |
+| 14 | **Notifications** | 🔴 **0%** | — | — |
+| 15 | **Settings** | 🔴 **0%** | — | — |
+| 16 | **Admin** | 🔴 **0%** | — | — |
 
-**Overall Feature Completeness: ~63%**
+**Overall Feature Completeness: ~68%** *(كان ~63% — Profile +8%)*
 
-### 13.2 Critical Bugs
-
-| المشكلة | الملف |
-|---------|-------|
-| Payment validation `vodafone_cash,fawry` vs DB enum `wallet` | OrderController + migration |
-| Card marked `paid` before Paymob confirms | PlaceOrderAction |
-| Forgot-password verify-otp marks OTP used → reset fails | OtpService |
-| Catalog requires auth (unusual for food app) | routes/api.php |
-
-### 13.3 Route Map
-
-```
-/api/auth/*, /meals/*, /cart/*, /favorites/*, /orders/*    ✅
-/api/notifications, /settings, /admin/*                    ❌
-```
-
-### 13.4 Feature Completeness Scorecard
+### 13.3 Feature Completeness Scorecard
 
 | Category | Score |
 |----------|-------|
-| Auth + Catalog + Cart + Orders | 85% |
+| Auth + Profile + Cart + Orders | 90% |
 | Payment | 45% |
-| Profile | 25% |
 | Notifications / Settings / Admin | 0% |
-| **Overall** | **~63%** |
-
+| **Overall** | **~68%** |
 ---
 
 ## 14. المراجع

@@ -788,60 +788,49 @@ public function test_login_fails_with_wrong_password(): void
 
 > **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
 
+**تاريخ التحديث:** 5 يوليو 2026 — بعد `git pull` من آخر commit على remote لكل مشروع. — branch `auth-branch` (merged category-branch).
+
+**ملاحظة:** Routes كاملة تقريبًا — لكن **`client` middleware لسه غير مسجّل** و `cart_items` migration stub.
+
 ### 13.1 Feature Matrix
 
 | # | Feature | الحالة | Route / Implementation | النواقص |
 |---|---------|--------|------------------------|---------|
-| 1 | **Authentication** | 🟡 **90%** | register, verify, login, logout, me | namespace casing `api` vs `Api` |
+| 1 | **Authentication** | ✅ **92%** | full OTP auth flow | namespace casing |
 | 2 | **Reset Password** | ✅ **95%** | forget → verify → reset | — |
 | 3 | **Profile** | ✅ **100%** | show, update, avatar, change-password | — |
-| 4 | **Categories** | ✅ **100%** | index + admin CRUD | — |
-| 5 | **Category Details** | ✅ **100%** | `GET /api/categories/{id}` | — |
-| 6 | **Meals** | ✅ **100%** | index + filters + admin CRUD | — |
-| 7 | **Meal Details** | ✅ **100%** | `GET /api/meals/{id}` | — |
+| 4 | **Categories** | ✅ **100%** | public + admin CRUD | — |
+| 5 | **Category Details** | ✅ **100%** | show | — |
+| 6 | **Meals** | ✅ **100%** | index + admin CRUD | — |
+| 7 | **Meal Details** | ✅ **100%** | show | — |
 | 8 | **Favorites** | ✅ **100%** | list + toggle | — |
-| 9 | **Cart** | 🔴 **35%** | routes exist | **CartItem vs `carts` table mismatch** |
-| 10 | **Checkout** | 🔴 **40%** | `POST /api/checkout` | **`client` middleware missing** |
-| 11 | **Payment** | 🟡 **55%** | Paymob initiate + callback | blocked by middleware |
-| 12 | **My Orders** | 🟡 **55%** | `GET /api/orders` | blocked by middleware |
-| 13 | **Order Details** | 🟡 **55%** | `GET /api/orders/{id}` | blocked by middleware |
-| 14 | **Notifications** | 🟡 **60%** | list, mark read | **PSR-4 wrong path for Actions** |
-| 15 | **Settings** | 🔴 **0%** | — | **غير موجود** |
-| 16 | **Admin** | 🟡 **75%** | dashboard, users, orders, meals | ingredients broken |
+| 9 | **Cart** | 🔴 **35%** | routes exist | **cart_items table stub** |
+| 10 | **Checkout** | 🔴 **40%** | `POST /checkout` | **`client` middleware missing** |
+| 11 | **Payment** | 🟡 **55%** | Paymob + callback | blocked by middleware |
+| 12 | **My Orders** | 🟡 **55%** | index + show | blocked by middleware |
+| 13 | **Order Details** | 🟡 **55%** | show | blocked by middleware |
+| 14 | **Notifications** | 🟡 **65%** | list, mark read | Actions in wrong PSR-4 path |
+| 15 | **Settings** | 🔴 **0%** | — | — |
+| 16 | **Admin** | ✅ **85%** | dashboard, users, orders, meals | ingredients partial |
 
-**Overall Feature Completeness: ~68%**
+**Overall Feature Completeness: ~68%** *(نفس النطاق — blockers لم تُصلَح بعد)*
 
-### 13.2 Critical Blockers
+### 13.2 Critical Blockers (unchanged)
 
 | المشكلة | Impact |
 |---------|--------|
-| `client` middleware not registered | orders/checkout/payment **fail at runtime** |
-| Cart: `CartItem` model vs `carts` migration mismatch | cart non-functional |
-| Duplicate migrations (`carts`, `payment_methods`, sanctum) | `migrate` fails on fresh DB |
-| Notification Actions in wrong folder | autoload failure |
+| `client` middleware not in `bootstrap/app.php` | orders/checkout/payment crash |
+| `cart_items` migration = id + timestamps only | cart broken |
+| Duplicate migrations | fresh migrate fails |
 
-### 13.3 Route Map
-
-```
-/api/auth/*, /categories, /meals, /favorites, /profile     ✅
-/api/cart                                                   🟡 broken schema
-/api/checkout, /orders, /payments                           🟡 middleware blocked
-/api/notifications                                          🟡 autoload issue
-/api/settings                                               ❌
-/api/admin/*                                                🟡 mostly works
-```
-
-### 13.4 Feature Completeness Scorecard
+### 13.3 Feature Completeness Scorecard
 
 | Category | Score |
 |----------|-------|
-| Auth + Profile + Catalog | 95% |
-| Cart + Orders + Payment | 45% |
-| Notifications | 60% |
+| Auth + Catalog + Profile + Admin | 95% |
+| Cart + Orders + Payment (runtime) | 45% |
 | Settings | 0% |
-| Admin | 75% |
 | **Overall** | **~68%** |
-
 ---
 
 ## 12. المراجع

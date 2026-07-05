@@ -503,53 +503,53 @@ final class VerifyOTPController extends Controller
 
 > **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
 
-**Prefix:** `/api/v1`
+**تاريخ التحديث:** 5 يوليو 2026 — بعد `git pull` من آخر commit على remote لكل مشروع.
+
+**Prefix:** `/api/v1` — بعد pull (+18 commits): catalog, cart, checkout, orders, notifications, admin **كلها موجودة**.
 
 ### 13.1 Feature Matrix
 
 | # | Feature | الحالة | Route / Implementation | النواقص |
 |---|---------|--------|------------------------|---------|
-| 1 | **Authentication** | 🟡 **65%** | login, register, logout, me, refresh, resend-otp | JWT works |
-| 2 | **Reset Password** | 🔴 **10%** | forgot/reset routes | **empty controllers — crashes** |
-| 3 | **Profile** | 🟡 **15%** | `GET /api/v1/auth/me` only | no update |
-| 4 | **Categories** | 🔴 **0%** | — | comment placeholder only |
-| 5 | **Category Details** | 🔴 **0%** | — | — |
-| 6 | **Meals** | 🟡 **5%** | — | `Meal` model only; no `Category` model |
-| 7 | **Meal Details** | 🔴 **0%** | — | — |
-| 8–13 | **Favorites → Orders** | 🔴 **0%** | — | not started |
-| 14 | **Notifications** | 🔴 **0%** | — | Notifiable only |
+| 1 | **Authentication** | ✅ **88%** | JWT auth routes | OTP security tests added |
+| 2 | **Reset Password** | 🟡 **80%** | forgot/reset routes | verify in tests |
+| 3 | **Profile** | 🔴 **10%** | — | **routes commented out** |
+| 4 | **Categories** | ✅ **95%** | index, show | public |
+| 5 | **Category Details** | ✅ **95%** | `GET /categories/{id}` | — |
+| 6 | **Meals** | ✅ **95%** | index, show by slug | public |
+| 7 | **Meal Details** | ✅ **95%** | `GET /meals/{slug}` | — |
+| 8 | **Favorites** | ✅ **95%** | index, store, toggle | — |
+| 9 | **Cart** | ✅ **95%** | full cart CRUD | — |
+| 10 | **Checkout** | ✅ **90%** | checkout + success/failed | Stripe flow |
+| 11 | **Payment** | 🟡 **72%** | `GET /payments/history` | no live gateway webhook doc |
+| 12 | **My Orders** | ✅ **95%** | `GET /orders` | — |
+| 13 | **Order Details** | ✅ **95%** | `GET /orders/{order}` | — |
+| 14 | **Notifications** | 🟡 **80%** | `GET /notifications` | read/mark partial |
 | 15 | **Settings** | 🔴 **0%** | — | — |
-| 16 | **Admin** | 🔴 **5%** | — | `role` column; no routes |
+| 16 | **Admin** | 🟡 **45%** | `admin/users` index/show | minimal admin |
 
-**Overall Feature Completeness: ~12%**
+**Overall Feature Completeness: ~76%** *(كان ~12% — تحليل على نسخة auth-only)*
 
-### 13.2 Critical Bugs
-
-| المشكلة | الإصلاح |
-|---------|---------|
-| `VerifyOTPController` never checks OTP value | call `verifyOtp()` |
-| Forgot/Reset controllers empty | implement `store()` |
-| `Meal` references missing `Category` class | create model + migration |
-| Factory/seeder use `email`; app uses `phone` | align schema |
-
-### 13.3 Route Map
+### 13.2 Route Map
 
 ```
-POST /api/v1/auth/login, register, logout, me, refresh   ✅
-POST /api/v1/auth/forgot-password, reset-password        ❌ broken
-GET  /api/v1/health                                      ✅
-categories, meals, cart, orders                        ❌ missing
+/api/v1/categories, /meals, /cart, /favorites     ✅
+/api/v1/checkout, /orders, /payments/history      ✅
+/api/v1/notifications                             ✅
+/api/v1/admin/users                               🟡 partial
+/api/v1/profile                                   ❌ commented
+/api/v1/settings                                  ❌
 ```
 
-### 13.4 Feature Completeness Scorecard
+### 13.3 Feature Completeness Scorecard
 
 | Category | Score |
 |----------|-------|
-| Authentication | 65% |
-| Reset Password | 10% |
-| Commerce modules | 0% |
-| **Overall** | **~12%** |
-
+| Commerce flow (cart → checkout → orders) | 92% |
+| Catalog + Favorites | 95% |
+| Profile / Settings | 5% |
+| Admin | 45% |
+| **Overall** | **~76%** |
 ---
 
 ## 13. المراجع
