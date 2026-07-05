@@ -19,7 +19,7 @@
 |---|--------|---------|---------|----------|-------|------------------------|
 | 1 | محمد إسماعيل | FoodIfy | **~83%** | ❌ | ✅ Web | Payment completion، Settings API |
 | 2 | علي | FoodIfy | **~76%** | ❌ | 🟡 جزئي | Profile معطّل، Admin محدود |
-| 3 | عبدالله (Abdella) | FoodIfy | **~70%** | ❌ | ❌ | Settings، Admin |
+| 3 | عبدالله (Abdella) | FoodIfy | **~70%** | ❌ | ❌ | Stripe ✅ — Settings، Admin، refactor معماري |
 | 4 | يوسف | FoodIfy | **~70%** | ❌ | ❌ | Settings، Admin، ثغرات أمنية |
 | 5 | محمد عادل | FoodIfy | **~68%** | ❌ | ❌ | Notifications، payment enum bug |
 | 6 | الهام (Elham) | FoodIfy | **~68%** | ❌ | ✅ | `client` middleware، cart schema |
@@ -39,7 +39,7 @@
 |--------|---------|-------|
 | محمد إسماعيل | FoodIfy | [mohamedEsmail/FoodIfy/CODE_REVIEW.md](mohamedEsmail/FoodIfy/CODE_REVIEW.md) |
 | علي | FoodIfy | [ali/FoodIfy/CODE_REVIEW.md](ali/FoodIfy/CODE_REVIEW.md) |
-| عبدالله (Abdella) | FoodIfy | [abdella/FoodIfy/CODE_REVIEW.md](abdella/FoodIfy/CODE_REVIEW.md) |
+| عبدالله (Abdella) | FoodIfy | [abdella/FoodIfy/CODE_REVIEW.md](abdella/FoodIfy/CODE_REVIEW.md) — **مراجعة كاملة 5 Jul 2026** |
 | يوسف | FoodIfy | [yossef/FoodIfy/CODE_REVIEW.md](yossef/FoodIfy/CODE_REVIEW.md) |
 | محمد عادل | FoodIfy | [mohamedAdel/FoodIfy/CODE_REVIEW.md](mohamedAdel/FoodIfy/CODE_REVIEW.md) |
 | الهام (Elham) | FoodIfy | [elham/FoodIfy/CODE_REVIEW.md](elham/FoodIfy/CODE_REVIEW.md) |

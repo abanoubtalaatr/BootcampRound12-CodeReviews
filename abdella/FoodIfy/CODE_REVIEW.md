@@ -3,10 +3,10 @@
 > **الهدف:** Controllers رفيعة تمامًا — بدون validation وبدون business logic.  
 > كل المنطق في Actions / Services / Repositories مع تطبيق SOLID في كل الطبقات.
 
-**تاريخ المراجعة:** 2 يوليو 2026   (تحديث — Feature Completeness)
+**تاريخ المراجعة:** 5 يوليو 2026  
 **الطالب:** Abdella (Abdallah Hefzy)  
 **المستودع:** [Abdallah-Hefzy/Foodify](https://github.com/Abdallah-Hefzy/Foodify)  
-**النطاق:** `app/` — Auth module فقط (لا يوجد domain modules بعد)
+**النطاق:** `app/` — Auth + Catalog + Cart + Orders + Stripe + Favorites + Profile + Notifications
 
 ---
 
@@ -14,49 +14,82 @@
 
 | المنطقة | الحالة | التقييم |
 |---------|--------|---------|
-| Auth Module | مُنفَّذ (functional prototype) | 🟡 يعمل لكن يحتاج refactor كامل |
-| Form Requests | جزئي (2 من 7 flows) | 🟡 Login + Register فقط |
-| Actions | غير موجود | 🔴 |
+| Auth Module | مُنفَّذ بالكامل | 🟡 يعمل — fat controllers |
+| OTP / Phone Verify | WhatsApp (UltraMsg) + throttle | ✅ |
+| Reset Password | OTP + Sanctum ability `password-reset` | ✅ |
+| Form Requests | 3 فقط (Login, Register, UpdateProfile) | 🔴 باقي flows inline |
+| Actions / Services | `WhatsAppService` فقط | 🔴 |
 | Repositories | غير موجود | 🔴 |
-| Services | غير موجود | 🔴 |
-| DTOs | غير موجود | 🔴 |
-| API Resources | غير موجود | 🔴 |
-| `ApiResponse` Trait | `ApiTrait` بديل غير مطابق | 🟡 |
-| Middleware مخصص | غير موجود | 🔴 |
-| Feature Tests | غير موجود | 🔴 |
-| SOLID Compliance | ضعيف | 🔴 |
+| API Resources | غير موجود | 🔴 raw models |
+| `ApiResponse` Trait | موجود | ✅ envelope موحّد |
+| Catalog (Category/Meal) | مُنفَّذ | 🟡 auth + phone verified required |
+| Cart | مُنفَّذ | 🟡 fat controller |
+| Orders + Stripe | مُنفَّذ (Cashier) | 🟡 checkout merged in OrderController |
+| Favorites | مُنفَّذ | 🟡 |
+| Profile | مُنفَّذ | 🟡 no change-password |
+| Notifications | مُنفَّذ | ✅ on order create |
+| Payment Methods | Stripe SetupIntent + CRUD | ✅ |
+| Settings | غير موجود | 🔴 |
+| Admin | غير موجود | 🔴 |
+| Feature Tests | scaffold فقط | 🔴 |
+| SOLID Compliance | ضعيف | 🔴 fat controllers everywhere |
 
-**الخلاصة:** المشروع يقدّم auth flow كامل (register, login, logout, phone verification, forgot password) باستخدام Laravel Sanctum — وهذا إنجاز جيد كبداية. لكن **كل المنطق موجود داخل Controllers** مباشرة: validation، DB queries، OTP generation، token handling، و conditional responses. لا توجد طبقة Actions ولا Repositories ولا Services. المعمارية المستهدفة **غير مطبّقة**.
+**الخلاصة:** Abdella بنى **Foodify API functionally كامل نسبيًا (~70%)** — Auth، Catalog، Cart، Checkout (Stripe)، Orders، Favorites، Profile، Notifications كلها شغالة. نقاط القوة: **Sanctum + phone verification middleware + Stripe Cashier + rate limiting على OTP + WhatsApp OTP service**. لكن المعمارية **Fat Controller** بالكامل: validation، DB، Stripe charges، transactions، notifications كلها داخل controllers. لا Actions layer ولا Repositories ولا Form Requests لمعظم endpoints.
+
+**Overall Feature Completeness: ~70%**
 
 ---
 
-## 2. المعمارية المستهدفة (Target Architecture)
-
-```
-HTTP Request
-    │
-    ▼
-Form Request          ← Validation + Authorization فقط
-    │
-    ▼
-Controller            ← يستدعي Action/Service ويرجع Response فقط (zero logic)
-    │
-    ▼
-Action / Service      ← Business Logic (use case واحد)
-    │
-    ▼
-Repository            ← Database access فقط (عبر Interface)
-    │
-    ▼
-Model / Eloquent
-```
-
-### الوضع الحالي vs المستهدف
+## 2. المعمارية المستهدفة vs الحالية
 
 ```
 المستهدف:  FormRequest → Controller → Action → Service → RepositoryInterface → Model
-الحالي:    FormRequest → Controller ──────────────────────────────→ Model (Eloquent مباشرة)
-           (جزئي)        (+ inline validate, OTP, hashing, tokens, if/else)
+
+Auth:      FormRequest → Controller ──────────────────────────────→ Model  (~30%)
+Business:  Request     → Controller ──────────────────────────────→ Model  (0%)
+                          (inline validate + Stripe + DB + notify)
+```
+
+### قواعد الـ Controller (إلزامية)
+
+```php
+// ✅ Controller مثالي
+public function store(PlaceOrderRequest $request, PlaceOrderAction $action): JsonResponse
+{
+    return $this->data($action->execute($request->user(), $request->toDto()), 'Order placed', 201);
+}
+
+// ❌ الوضع الحالي في OrderController
+$request->validate([...]);
+$user->charge($totalPrice * 100, $paymentMethod->gateway_token, [...]);
+DB::beginTransaction();
+$order = $user->orders()->create([...]);
+$user->notify(new OrderStatusNotification(...));
+```
+
+### هيكل المجلدات المقترح
+
+```
+app/
+├── Actions/
+│   ├── Auth/
+│   ├── Cart/
+│   ├── Order/
+│   └── Payment/
+├── Contracts/
+│   ├── Repositories/
+│   └── Services/
+├── DTOs/
+├── Http/
+│   ├── Controllers/
+│   ├── Middleware/
+│   ├── Requests/          ← Form Request لكل endpoint
+│   └── Resources/         ← UserResource, MealResource, OrderResource
+├── Repositories/
+├── Services/
+│   └── WhatsAppService.php  ← موجود ✅ — أضف Interface
+└── Traits/
+    └── ApiResponse.php      ← موجود ✅
 ```
 
 ---
@@ -67,92 +100,35 @@ Model / Eloquent
 
 | الملف | المشكلة |
 |-------|---------|
-| `LoginController` | credential check + token creation + response mapping |
-| `RegisterController` | user creation + password hashing + token issuance |
-| `ForgotPasswordController` | validation + OTP send/verify + token abilities + password reset |
-| `PhoneVerificationController` | OTP generation + verification + persistence |
-
-كل controller يملك **عدة مسؤوليات** — يجب تقسيمها إلى Actions منفصلة.
+| `OrderController` | validation + Stripe charge + transaction + order items + cart clear + notification |
+| `CartController` | validation + pivot logic + price calculation |
+| `PaymentMethodController` | Stripe customer + add card + DB persist |
+| `ForgotPasswordController` | OTP generate + hash + WhatsApp send + token abilities |
+| `NotificationController` | fetch + group-by-date logic in controller |
 
 ### O — Open/Closed Principle
 
-- OTP logic مكرر في `PhoneVerificationController` و `ForgotPasswordController` — أي تغيير (مثلاً SMS gateway) يتطلب تعديل controllers متعددة.
-- لا interfaces — لا يمكن إضافة cache layer أو mock في tests بدون تعديل الكود.
-
-### L — Liskov Substitution Principle
-
-- غير قابل للتطبيق حاليًا — لا توجد abstractions.
-
-### I — Interface Segregation Principle
-
-- غير قابل للتطبيق حاليًا — لا توجد interfaces.
+- OTP logic مكرر في `ForgotPasswordController` و `PhoneVerificationController` — أي تغيير (SMS gateway) يتطلب تعديل controllers متعددة.
+- `WhatsAppService` concrete — لا interface للـ swap في tests.
 
 ### D — Dependency Inversion Principle
 
 | الوضع الحالي | المطلوب |
 |--------------|---------|
-| Controllers تعتمد على `User` model مباشرة | تعتمد على `UserRepositoryInterface` |
-| OTP generation داخل controllers | `OtpService` مُحقَن عبر interface |
-| `AppServiceProvider::register()` فارغ | يربط كل Interface → Implementation |
+| Controllers → Eloquent مباشرة | Repository interfaces |
+| `WhatsAppService` injected في 2 controllers فقط | `OtpService` + `SmsGatewayInterface` |
+| `AppServiceProvider::register()` فارغ | DI bindings |
 
 ---
 
 ## 4. مراجعة ملف بملف
 
-### 4.1 Controllers — 🔴 يحتاج Refactor كامل
+### 4.1 Auth Controllers
 
-المشروع يستخدم **4 controllers منفصلة** بدل `AuthController` موحّد — التقسيم مقبول، لكن كل controller **سمين (fat)**.
-
-#### `LoginController` — 🔴
-
-```17:30:app/Http/Controllers/Auth/LoginController.php
-    public function login(LoginRequest $request)
-    {
-        $user = User::where('phone', $request->phone)->first();
-
-        if (! $user || ! Hash::check($request->password, $user->password)) {
-            return $this->error([], 'username or password is wrong', 401);
-        }
-        $token = $user->createToken('foodify_auth_token')->plainTextToken;
-        return $this->data([
-            'user' => $user,
-            'token' => $token,
-        ], 'You have successfully logged in');
-    }
-```
-
-| المخالفة | التفاصيل |
-|----------|----------|
-| DB access | `User::where()` مباشرة في controller |
-| Business logic | credential check + `Hash::check()` |
-| Token handling | `createToken()` في controller |
-| Response mapping | `if/else` لاختيار error vs success |
-| Raw model | يرجع `$user` بدون `UserResource` |
-| رسالة خاطئة | `"username"` بينما الـ auth بالـ phone |
-
-`logout()` (سطر 34–38): `$request->user()->currentAccessToken()->delete()` — DB logic في controller.
-
-**المستهدف:**
-
-```php
-public function login(LoginRequest $request, LoginAction $action): JsonResponse
-{
-    return $this->loginResponse($action->execute($request->toDto()));
-}
-
-public function logout(LogoutAction $action): JsonResponse
-{
-    $action->execute(auth()->user());
-    return $this->loggedOutResponse();
-}
-```
-
----
-
-#### `RegisterController` — 🔴
+#### `RegisterController` — 🟡
 
 ```15:29:app/Http/Controllers/Auth/RegisterController.php
-    public function register(RegisgterRequest $request)
+    public function register(RegisterRequest $request)
     {
         $user = User::create([...]);
         $token = $user->createToken('foodify_auth_token')->plainTextToken;
@@ -160,325 +136,241 @@ public function logout(LogoutAction $action): JsonResponse
     }
 ```
 
-| المخالفة | التفاصيل |
-|----------|----------|
-| DB access | `User::create()` مباشرة |
-| Double hashing risk | `Hash::make()` (سطر 21) + `'password' => 'hashed'` cast في Model (سطر 36) |
-| Token handling | في controller |
-| Typo في Request | `RegisgterRequest` بدل `RegisterRequest` |
+| # | المشكلة | التفاصيل |
+|---|---------|----------|
+| 1 | Token قبل phone verify | user يقدر يستخدم API قبل `verify-phone` |
+| 2 | Raw user في response | لا `UserResource` |
+| 3 | `User::create` في controller | يجب `RegisterUserAction` |
+
+#### `LoginController` — 🟡
+
+- `User::where()` + `Hash::check()` في controller ✅ Form Request
+- `RateLimiter::clear` بعد login — جيد
+- logout: token delete في controller
+
+#### `ForgotPasswordController` — ✅ جيد functionally
+
+- OTP hashed بـ SHA256 ✅
+- Sanctum ability `password-reset` على verify ✅
+- `tokenCan('password-reset')` على reset ✅
+- WhatsApp via `WhatsAppService` ✅
+- 🟡 inline validation — يحتاج `SendOtpRequest`, `VerifyOtpRequest`, `ResetPasswordRequest`
+
+#### `PhoneVerificationController` — ✅ (syntax fixed)
+
+- OTP flow صحيح بعد إصلاح الـ syntax bug السابق
+- `phone_verified_at` يُحدَّث ✅
+- 🟡 OTP generation مكرر مع ForgotPassword
 
 ---
 
-#### `PhoneVerificationController` — 🔴 + 🐛 Bug حرج
+### 4.2 `CheckPhoneIsVerified` Middleware — ✅
 
-```15:50:app/Http/Controllers/Auth/PhoneVerificationController.php
-    public function sendVerificationOTP() { ... }  // لا Form Request
-
-    public function verifyPhone(Request $request)
-    {
-        $request->validate([...]);           // validation في controller
-        if ($request->otp_code != $user->otp_code) { ... }
-        if (Carbon::now(...)->greaterThan(...)) {
-            return $this->error(...);
-        // ❌ BUG: قوس } مفقود — الكود التالي داخل if block بالخطأ
-        $user->otp_code = null;
-        ...
-    }
+```20:27:app/Http/Middleware/CheckPhoneIsVerified.php
+        if (!$request->user() || !$request->user()->phone_verified_at) {
+            return $this->error([], 'Your phone number is not verified', 403);
+        }
 ```
 
-**🐛 Bug حرج (P0):** السطر 42–44 — `if` block الـ expiry **ناقص `}`** بعد `return`. الكود من سطر 45–49 لن يُنفَّذ أبدًا في حالة النجاح، والملف قد يسبب **PHP parse error**.
-
-| المخالفة | التفاصيل |
-|----------|----------|
-| Syntax bug | قوس `}` مفقود بعد expiry check |
-| Inline validation | `$request->validate()` في controller |
-| OTP logic | generation + verification + persistence |
-| Security | `dev_otp` يُرجع في response (سطر 23) |
-| No Form Request | `sendVerificationOTP()` بدون validation |
+نمط ممتاز — يحمي كل business routes behind `phone.verified`.
 
 ---
 
-#### `ForgotPasswordController` — 🔴
+### 4.3 Catalog — 🟡
+
+#### `HomeController` — 🟡
+
+- `Meal::where('is_chef_recommended', true)` — query في controller
+- لا pagination
+
+#### `CategoryController` — 🟡
+
+- index + show with meals ✅
+- `Category::find($id)` بدون 404 exception handling موحّد
+
+#### `MealController` — 🟡
+
+- show with ingredients ✅
+- **لا `GET /api/meals` list** — catalog browsing محدود
+
+---
+
+### 4.4 `CartController` — 🔴 Fat
 
 | Method | المشاكل |
 |--------|---------|
-| `sendOTP` | inline validation (21–23), user lookup, OTP generation, `dev_otp` leak, user enumeration (404 "Wrong phone number") |
-| `verifyOTP` | inline validation (43–46), duplicated OTP logic, token creation |
-| `resetPassword` | inline validation (75–80), ability check في controller (84–86), `Hash::make` + hashed cast |
+| `index` | price calculation + delivery fee hardcoded `30` في controller |
+| `addToCart` | inline validate + pivot attach/update logic |
+| `removeFromCart` | inline validate + detach |
 
-**إيجابية:** استخدام Sanctum token abilities (`password-reset`) — pattern أمني جيد، لكن يجب نقله لـ `ResetPasswordAction` + middleware.
-
----
-
-### 4.2 Form Requests — 🟡 جزئي
-
-| Request | الحالة | ملاحظات |
-|---------|--------|---------|
-| `LoginRequest` | ✅ | قواعد جيدة — لكن في `app/Http/Requests/` مش `Auth/` |
-| `RegisgterRequest` | 🟡 | typo في الاسم + نفس مشكلة المسار |
-| `SendOtpRequest` | 🔴 مفقود | validation في controller |
-| `VerifyOtpRequest` | 🔴 مفقود | validation في controller |
-| `VerifyPhoneRequest` | 🔴 مفقود | validation في controller |
-| `ResetPasswordRequest` | 🔴 مفقود | validation في controller |
-
-**تحسينات مطلوبة:**
-- نقل كل Requests لـ `app/Http/Requests/Auth/`
-- إصلاح typo: `RegisgterRequest` → `RegisterRequest`
-- إضافة `toDto()` method في كل Request
-- استخراج phone regex لـ custom rule مشتركة (مكرر 4 مرات)
+**Delivery fee `30`** مكرر في `CartController` و `OrderController` — يجب constant أو config.
 
 ---
 
-### 4.3 Actions — 🔴 غير موجود
+### 4.5 `OrderController` — 🔴 Critical Fat
 
-المجلد `app/Actions/Auth/` **غير موجود**. كل business logic في controllers.
-
-**Actions مطلوبة:**
-
-| Action | الغرض |
-|--------|-------|
-| `LoginAction` | credential check + token creation |
-| `RegisterAction` | user creation + token |
-| `LogoutAction` | revoke current token |
-| `SendVerificationOtpAction` | generate + store OTP |
-| `VerifyPhoneAction` | verify OTP + mark phone verified |
-| `SendResetOtpAction` | send OTP for password reset |
-| `VerifyResetOtpAction` | verify OTP + issue reset token |
-| `ResetPasswordAction` | update password + revoke token |
-
----
-
-### 4.4 Repositories — 🔴 غير موجود
-
-لا يوجد `UserRepository` ولا `UserRepositoryInterface`.
-
-**المطلوب:**
-
-```php
-// app/Contracts/Repositories/UserRepositoryInterface.php
-interface UserRepositoryInterface
-{
-    public function create(array $data): User;
-    public function findByPhone(string $phone): ?User;
-    public function updateOtp(User $user, string $otp, Carbon $expiresAt): void;
-    public function clearOtp(User $user): void;
-    public function markPhoneVerified(User $user): void;
-    public function updatePassword(User $user, string $password): void;
-}
+```38:101:app/Http/Controllers/OrderController.php
 ```
 
----
+| # | المشكلة | Severity |
+|---|---------|----------|
+| 1 | Stripe `$user->charge()` داخل controller | 🔴 |
+| 2 | DB transaction management في controller | 🔴 |
+| 3 | Order items creation loop في controller | 🔴 |
+| 4 | `$user->cartMeals()->detach()` — clear cart | 🟡 |
+| 5 | Notification side effect في controller | 🟡 |
+| 6 | `Auth::user()` بدل `$request->user()` | 🟡 |
+| 7 | لا ownership check على `payment_method_id` belongs to user | 🟡 (partial — uses `$user->paymentMethods()->find`) |
+| 8 | Error message exposes `$e->getMessage()` | 🟡 security |
 
-### 4.5 Services — 🔴 غير موجود
-
-OTP logic مكرر بين `PhoneVerificationController` و `ForgotPasswordController`:
-
-```php
-$otp_code = random_int(1000, 9999);
-$user->otp_code = $otp_code;
-$user->otp_expires_at = Carbon::now('Africa/Cairo')->addMinutes(5);
-$user->save();
-```
-
-**المطلوب:** `OtpService` + `TokenService` + `SmsGatewayInterface` (للمستقبل).
-
-**ملاحظة إيجابية:** استخدام `random_int()` بدل `rand()` — صحيح أمنيًا ✅
+**إيجابي:** Stripe integration via Laravel Cashier يعمل — charge + order + notification في flow واحد.
 
 ---
 
-### 4.6 `ApiTrait` — 🟡 يحتاج إعادة تسمية وتوحيد
+### 4.6 `PaymentMethodController` — 🟡
 
-**الموجود:** `app/traits/ApiTrait.php`  
-**المطلوب:** `app/Traits/ApiResponse.php`
-
-| المشكلة | التفاصيل |
-|---------|----------|
-| Namespace | `App\traits` → `App\Traits` (PSR-4) |
-| Folder | `traits` lowercase → `Traits` |
-| الاسم | `ApiTrait` → `ApiResponse` |
-| Response shape | `{ message, error, data }` — مختلف عن المعيار `{ status, message, data, errors }` |
-| Default error code | `404` (سطر 21) — غير مناسب لـ auth errors |
-
-**إيجابية:** envelope موحّد للـ JSON responses ✅
-
-**المطلوب:** إضافة response methods مثل `loginResponse()`, `otpSentResponse()`, `authenticatedResponse()` — الـ controller ينادي method جاهزة بدل `if/else`.
+- `createSetupIntent()` ✅ — frontend Stripe Elements ready
+- `store()` — Stripe + DB في controller
+- `destroy()` — empty catch `catch (\Exception $e) {}` **يبلع الأخطاء**
 
 ---
 
-### 4.7 `User` Model — 🟡
+### 4.7 `ProfileController` — 🟡
 
-```14:24:app/Models/User.php
-#[Fillable(['name', 'email', 'password'])]
-#[Hidden(['password', 'remember_token'])]
-class User extends Authenticatable
-{
-    protected $fillable = [
-        'name','phone','password','email'
-    ];
-```
-
-| المشكلة | التفاصيل |
-|---------|----------|
-| Duplicate fillable | attribute `#[Fillable]` + `$fillable` property — `phone` ناقص من attribute |
-| Missing hidden | `otp_code`, `otp_expires_at` غير مخفية — تسريب محتمل |
-| Missing casts | `otp_expires_at`, `phone_verified_at` بدون `datetime` cast |
-| Double hashing | `'password' => 'hashed'` cast + `Hash::make()` في controllers |
+- `UpdateProfileRequest` ✅
+- `uploadPhoto` — inline validation (يحتاج `UploadPhotoRequest`)
+- لا change-password endpoint
+- `Storage` logic في controller
 
 ---
 
-### 4.8 Middleware — 🔴
+### 4.8 `FavoriteController` — 🟡
 
-**الموجود:** `auth:sanctum` فقط على routes.
-
-**المفقود:**
-- `throttle` على OTP endpoints (brute-force risk على 4-digit OTP)
-- `EnsurePhoneVerified` middleware
-- Token ability middleware لـ password-reset (حاليًا inline في controller)
-- توحيد error response format
+- `User::meals()` relationship name مُربك — favorites table لكن method اسمه `meals()`
+- inline validation في store/destroy
+- `destroy` يستخدم `Request` body `meal_id` بدل route param
 
 ---
 
-### 4.9 `routes/api.php` — 🟡
+### 4.9 `NotificationController` — 🟡
 
-```10:22:routes/api.php
-Route::post('register', [RegisterController::class, 'register']);
-Route::post('login', [LoginController::class, 'login']);
-...
-```
-
-**إيجابيات:** Sanctum على protected routes ✅
-
-**تحسينات:**
-- `Route::prefix('v1')` للـ versioning
-- `Route::prefix('auth')->group(...)` لتجميع auth routes
-- `throttle:6,1` على OTP routes
-- named routes للـ testing
+- Grouping logic (Today/Yesterday/Last Week) في controller — يجب `NotificationPresenter` أو Resource
+- لا mark-all-read endpoint
 
 ---
 
-### 4.10 `AppServiceProvider` — 🔴
+### 4.10 Models — 🟡
 
-```12:23:app/Providers/AppServiceProvider.php
-    public function register(): void
+#### `User.php`
+
+```54:64:app/Models/User.php
+    public function meals()
     {
-        //
+        return $this->belongsToMany(Meal::class, 'favorites');
     }
+
+    public function cartMeals()
+    {
+        return $this->belongsToMany(Meal::class, 'carts')
 ```
 
-فارغ — لا DI bindings. يجب ربط interfaces عند إنشائها.
+| المشكلة | الإصلاح |
+|---------|---------|
+| `meals()` = favorites | rename to `favorites()` |
+| `Billable` trait (Cashier) | ✅ for Stripe |
+| OTP fields hidden | ✅ |
+| `phone_verified_at` cast missing | add to `$casts` |
 
 ---
 
-### 4.11 Database / Migrations — 🟡
+### 4.11 `WhatsAppService` — ✅
 
-```17:17:database/migrations/0001_01_01_000000_create_users_table.php
-            $table->string('phone');
+- UltraMsg integration via config ✅
+- Logging on failure ✅
+- Phone formatting `+20` ✅
+- 🟡 لا interface — hard to mock in tests
+
+---
+
+### 4.12 `ApiResponse` Trait — ✅
+
+```10:41:app/Traits/ApiResponse.php
 ```
 
-| المشكلة | التفاصيل |
-|---------|----------|
-| No unique index | `phone` بدون `unique()` — race condition مع validation |
-| Plain OTP storage | `otp_code` مخزّن plain text — يجب hashing |
-| Schema OK | `otp_code`, `otp_expires_at`, `phone_verified_at` موجودة ✅ |
+Envelope موحّد `{ message, error, data }` — جيد.  
+🟡 Rate limiter responses في `AppServiceProvider` تستخدم format مختلف `{ status, message }`.
 
 ---
 
-### 4.12 Tests — 🔴
+## 5. مشاكل أمنية
 
-فقط scaffold tests (`ExampleTest.php`). لا feature tests لأي auth endpoint.
-
----
-
-## 5. مشاكل أمنية (Security)
-
-| # | المشكلة | الخطورة | الملف |
-|---|---------|---------|-------|
-| 1 | `dev_otp` في API response | 🔴 | `PhoneVerificationController:23`, `ForgotPasswordController:36` |
-| 2 | OTP plain text في DB | 🟡 | migration |
-| 3 | User enumeration | 🟡 | `ForgotPasswordController:28-29` — 404 يكشف إن الـ phone مش مسجّل |
-| 4 | No rate limiting على OTP | 🔴 | `routes/api.php` |
-| 5 | OTP fields not hidden | 🟡 | `User.php` |
-| 6 | Syntax bug يمنع verify-phone | 🔴 | `PhoneVerificationController:42-44` |
+| # | المشكلة | الملف | Severity |
+|---|---------|-------|----------|
+| 1 | Token issued on register before phone verify | `RegisterController` | 🟡 |
+| 2 | Exception message leaked to client | `OrderController:100` | 🟡 |
+| 3 | Empty catch swallows Stripe delete errors | `PaymentMethodController:76` | 🟡 |
+| 4 | Catalog behind auth — OK for app but unusual | `routes/api.php` | ℹ️ |
+| 5 | No API Resources — may leak internal fields | all controllers | 🟡 |
+| 6 | Rate limit response format inconsistent | `AppServiceProvider` | 🟡 low |
 
 ---
 
 ## 6. ما هو جيد ✅
 
-1. **Sanctum integration** — `HasApiTokens`, bearer token flow, logout يحذف current token.
-2. **Password-reset token abilities** — `createToken(..., ['password-reset'])` + `tokenCan()` — pattern أمني ممتاز.
-3. **Partial Form Request usage** — `LoginRequest` و `RegisgterRequest` بقواعد validation قوية (phone regex, strong password).
-4. **Consistent API envelope** — `ApiTrait` يوفر `{ message, error, data }` موحّد.
-5. **JSON exception handling** — `bootstrap/app.php` يُعدّ JSON errors لـ `api/*`.
-6. **Secure OTP generation** — `random_int()` بدل `rand()`.
-7. **Auth feature completeness** — register, login, logout, phone verification, forgot password, reset password كلها موجودة.
-8. **Migration covers auth fields** — phone, OTP, verification timestamps.
+1. **Full customer journey** — register → verify phone → browse → cart → pay → orders → notifications.
+2. **Sanctum + scoped token abilities** — `password-reset` ability pattern ممتاز.
+3. **Stripe Cashier integration** — SetupIntent + charge on checkout.
+4. **Custom middleware** — `phone.verified` gate على business routes.
+5. **Rate limiting** — `send-otp` (3/5min) + `verify-auth` (5/15min) per phone.
+6. **OTP hashed** — SHA256 storage، not plain text.
+7. **`ApiResponse` trait** — consistent JSON envelope.
+8. **WhatsAppService** — extracted OTP delivery (partial service layer).
+9. **Order notifications** — `OrderStatusNotification` on successful checkout.
+10. **Ownership checks** — order show filters by `user_id`.
 
 ---
 
-## 7. خطة Refactor — Auth Module
+## 7. خطة Refactor
 
-### المرحلة 1 — Bugs & Security (فوري) 🔴
+### Sprint 1 — Architecture Foundation (P0)
 
-- [ ] إصلاح syntax bug في `PhoneVerificationController` (قوس `}` مفقود)
-- [ ] إزالة/guard `dev_otp` في responses (`app()->environment('local')` فقط)
-- [ ] إضافة `unique()` index على `phone` في migration
-- [ ] إضافة `$hidden` لـ `otp_code`, `otp_expires_at`
-- [ ] إضافة `throttle` middleware على OTP routes
-- [ ] إصلاح typo `RegisgterRequest` → `RegisterRequest`
+1. `OtpService` — unify OTP generate/verify/send (register, forgot, verify-phone)
+2. `SmsGatewayInterface` + `WhatsAppGateway` implements
+3. Form Requests لكل endpoint (Cart, Order, Favorite, PaymentMethod, Notification)
+4. API Resources: `UserResource`, `MealResource`, `OrderResource`, `CategoryResource`
 
-### المرحلة 2 — Architecture Skeleton 🟡
+### Sprint 2 — Business Actions (P1)
 
-- [ ] إنشاء `app/Traits/ApiResponse.php` (migrate من `ApiTrait`)
-- [ ] إنشاء `UserRepositoryInterface` + `UserRepository`
-- [ ] إنشاء `app/Actions/Auth/` — Login, Register, Logout, OTP actions
-- [ ] إنشاء DTOs — `LoginData`, `RegisterData`, etc.
-- [ ] إنشاء Form Requests لكل flow في `app/Http/Requests/Auth/`
-- [ ] Bind interfaces في `AppServiceProvider`
-- [ ] إنشاء `UserResource` للـ API output
-- [ ] Slim controllers: validate → DTO → action → response
+5. `PlaceOrderAction` — extract OrderController store logic
+6. `CartService` / `AddToCartAction`, `RemoveFromCartAction`
+7. `AddPaymentMethodAction`, `DeletePaymentMethodAction`
+8. Repository interfaces: `UserRepository`, `OrderRepository`, `MealRepository`
 
-### المرحلة 3 — Services & Quality 🟢
+### Sprint 3 — Quality (P2)
 
-- [ ] `OtpService` — extract duplicated OTP logic
-- [ ] `TokenService` — centralize token creation/revocation
-- [ ] إزالة `Hash::make()` من controllers (اعتمد على `hashed` cast)
-- [ ] Feature tests لكل auth endpoint
-- [ ] Update `UserFactory` بـ `phone` field
-- [ ] Route groups + named routes + API versioning
+9. Feature tests: auth flows, cart, checkout (mock Stripe)
+10. Fix `User::meals()` → `favorites()` rename
+11. Centralize `delivery_fee` in config
+12. Settings module + Admin module
+13. `GET /api/meals` catalog endpoint (public optional)
 
 ---
 
-## 8. Controller المستهدف (مثال)
+## 8. Controller المستهدف (مثال: Place Order)
 
 ```php
-<?php
-
-namespace App\Http\Controllers\Api\Auth;
-
-use App\Actions\Auth\LoginAction;
-use App\Actions\Auth\LogoutAction;
-use App\Actions\Auth\RegisterAction;
-use App\Http\Controllers\Controller;
-use App\Http\Requests\Auth\LoginRequest;
-use App\Http\Requests\Auth\RegisterRequest;
-use App\Traits\ApiResponse;
-use Illuminate\Http\JsonResponse;
-
-final class LoginController extends Controller
+public function store(PlaceOrderRequest $request, PlaceOrderAction $action): JsonResponse
 {
-    use ApiResponse;
+    $order = $action->execute(
+        user: $request->user(),
+        data: $request->toDto()
+    );
 
-    public function login(LoginRequest $request, LoginAction $action): JsonResponse
-    {
-        return $this->loginResponse($action->execute($request->toDto()));
-    }
-
-    public function logout(LogoutAction $action): JsonResponse
-    {
-        $action->execute(auth()->user());
-
-        return $this->loggedOutResponse();
-    }
+    return $this->data(
+        ['order' => new OrderResource($order->load('items.meal'))],
+        'Order placed and paid successfully!',
+        201
+    );
 }
 ```
 
@@ -486,50 +378,72 @@ final class LoginController extends Controller
 
 ## 9. File-by-File Scorecard
 
-| File | Thin Controller | Form Request | Action/Service | Repository | ApiResponse | Verdict |
-|------|:-:|:-:|:-:|:-:|:-:|---------|
-| `LoginController` | ❌ | جزئي | ❌ | ❌ | ApiTrait | 🔴 Fail |
-| `RegisterController` | ❌ | جزئي | ❌ | ❌ | ApiTrait | 🔴 Fail |
-| `PhoneVerificationController` | ❌ | ❌ | ❌ | ❌ | ApiTrait | 🔴 Fail + Bug |
-| `ForgotPasswordController` | ❌ | ❌ | ❌ | ❌ | ApiTrait | 🔴 Fail |
-| `LoginRequest` | — | ✅ | — | — | — | 🟡 Partial |
-| `RegisgterRequest` | — | ✅ | — | — | — | 🟡 Typo |
-| `User.php` | — | — | — | — | — | 🟡 Needs cleanup |
-| `AppServiceProvider` | — | — | — | ❌ | — | 🔴 Empty |
-| `ApiTrait.php` | — | — | — | — | Wrong name | 🟡 Partial |
-| `routes/api.php` | — | — | — | — | — | 🟡 Basic |
-| Tests | — | — | — | — | — | 🔴 Missing |
+| File | Thin | Form Request | Service/Action | Repository | ApiResponse | Verdict |
+|------|:----:|:------------:|:--------------:|:----------:|:-----------:|---------|
+| `RegisterController` | 🟡 | ✅ | ❌ | ❌ | ✅ | 🟡 |
+| `LoginController` | 🟡 | ✅ | ❌ | ❌ | ✅ | 🟡 |
+| `ForgotPasswordController` | ❌ | ❌ | 🟡 WhatsApp | ❌ | ✅ | 🟡 |
+| `PhoneVerificationController` | ❌ | ❌ | 🟡 WhatsApp | ❌ | ✅ | 🟡 |
+| `HomeController` | 🟡 | — | ❌ | ❌ | ✅ | 🟡 |
+| `CategoryController` | 🟡 | — | ❌ | ❌ | ✅ | 🟡 |
+| `MealController` | ✅ | — | ❌ | ❌ | ✅ | 🟡 OK |
+| `FavoriteController` | ❌ | ❌ | ❌ | ❌ | ✅ | 🔴 |
+| `CartController` | ❌ | ❌ | ❌ | ❌ | ✅ | 🔴 |
+| `OrderController` | ❌ | ❌ | ❌ | ❌ | ✅ | 🔴 |
+| `PaymentMethodController` | ❌ | ❌ | ❌ | ❌ | ✅ | 🔴 |
+| `ProfileController` | 🟡 | 🟡 partial | ❌ | ❌ | ✅ | 🟡 |
+| `NotificationController` | ❌ | — | ❌ | ❌ | ✅ | 🟡 |
+| `WhatsAppService` | — | — | ✅ | — | — | ✅ |
+| `CheckPhoneIsVerified` | ✅ | — | — | — | ✅ | ✅ |
+| Tests | — | — | — | — | — | 🔴 |
+| `AppServiceProvider` | — | — | 🟡 rate limit | ❌ | — | 🟡 |
 
 ---
 
-## 10. ملخص الأولويات (Action Items)
+## 10. مقارنة مع مشاريع Bootcamp
 
-### 🔴 Critical (اعملها فورًا)
+| المعيار | Abdella | Mohamed Esmail | Ali | Elham |
+|---------|:-------:|:--------------:|:---:|:-----:|
+| Feature completeness | ~70% | ~83% | ~76% | ~68% |
+| Stripe / Payment | ✅ Cashier | 🟡 pending | ✅ checkout | ✅ Paymob |
+| Actions layer | ❌ | ❌ | 🟡 partial | ✅ |
+| Form Requests | 🟡 3 files | 🟡 partial | ✅ many | ✅ many |
+| Phone verify gate | ✅ middleware | ❌ | 🟡 | ✅ |
+| Feature tests | ❌ | ✅ | ✅ | 🟡 |
+| Admin | ❌ | ✅ web | 🟡 | ✅ API |
+| Fat controllers | 🔴 all | 🔴 business | 🟡 improving | 🟢 actions |
 
-1. إصلاح **syntax bug** في `PhoneVerificationController` (قوس `}` مفقود)
-2. إزالة **`dev_otp`** من production responses
-3. إضافة **`throttle`** على OTP endpoints
-4. إضافة **`unique()`** على `phone` column
-5. إخفاء **`otp_code`** و `otp_expires_at` من User model
+**نقطة قوة Abdella:** Stripe checkout end-to-end + phone verification middleware + OTP rate limiting.  
+**نقطة ضعف:** zero Actions/Repositories — يحتاج refactor قبل إضافة features جديدة.
 
-### 🟡 High (قبل بناء modules جديدة)
+---
 
-6. إنشاء **Actions layer** ونقل كل business logic من controllers
-7. إنشاء **Repository Interface** + implementation + DI binding
-8. إنشاء **Form Requests** لكل OTP/password flow
-9. إعادة تسمية `ApiTrait` → **`ApiResponse`** + توحيد response format
-10. إنشاء **`UserResource`** — لا ترجع raw model
-11. إصلاح typo **`RegisgterRequest`** → `RegisterRequest`
-12. إزالة **`Hash::make()`** من controllers (اعتمد على `hashed` cast)
+## 11. ملخص الأولويات (Action Items)
 
-### 🟢 Medium (أثناء التطوير)
+### 🔴 Critical
 
-13. DTOs لكل Action
-14. `OtpService` + `TokenService`
-15. Feature + Unit tests
-16. Route versioning (`v1`) + named routes
-17. Exception-based error handling بدل `if/else` في controllers
-18. `SmsGatewayInterface` عند ربط SMS provider حقيقي
+1. استخراج `PlaceOrderAction` من `OrderController` — Stripe + transaction + items
+2. Form Requests لـ Cart, Order, Favorite, PaymentMethod
+3. Fix empty catch في `PaymentMethodController::destroy`
+4. لا ترجع `$e->getMessage()` للـ client في production
+
+### 🟡 High
+
+5. `OtpService` — unify 3 OTP flows
+6. API Resources لكل response
+7. Rename `User::meals()` → `favorites()`
+8. Feature tests (auth + cart + checkout mock)
+9. `delivery_fee` في config — not hardcoded `30`
+10. Block API access until phone verified (don't issue token on register OR gate all routes)
+
+### 🟢 Medium
+
+11. Settings module (`GET/PATCH /api/settings`)
+12. Admin module (CRUD categories/meals/orders)
+13. `GET /api/meals` list with filters
+14. Repository interfaces + DI
+15. README documentation
+16. Mark-all-read notifications
 
 ---
 
@@ -537,26 +451,24 @@ final class LoginController extends Controller
 
 > **مرجع المتطلبات:** Authentication, Profile, Cart, My Orders, Notifications, Favorites, Meals/Categories, Reset Password, Category Details, Meal Details, Settings, Payments/Checkout.
 
-**ملاحظة:** بعد pull (+5 commits) — المشروع **تطور جذريًا** من auth-only إلى API شبه كامل مع Stripe payment methods.
-
 ### 13.1 Feature Matrix
 
 | # | Feature | الحالة | Route / Implementation | النواقص |
 |---|---------|--------|------------------------|---------|
-| 1 | **Authentication** | ✅ **92%** | register, login, logout, verify-phone | phone.verified middleware |
-| 2 | **Reset Password** | ✅ **88%** | send-otp, verify-otp, reset-password | throttle added |
-| 3 | **Profile** | ✅ **90%** | GET/PUT profile, upload-photo | — |
+| 1 | **Authentication** | ✅ **92%** | register, login, logout, verify-phone | token before verify |
+| 2 | **Reset Password** | ✅ **88%** | send-otp, verify-otp, reset-password | inline validation |
+| 3 | **Profile** | ✅ **90%** | GET/PUT profile, upload-photo | no change-password |
 | 4 | **Categories** | ✅ **90%** | `GET /api/category` | — |
-| 5 | **Category Details** | ✅ **90%** | `GET /api/category/{id}` | — |
-| 6 | **Meals** | 🟡 **75%** | `GET /api/home`, meal by id | no standalone `/meals` list |
-| 7 | **Meal Details** | ✅ **90%** | `GET /api/meal/{id}` | — |
+| 5 | **Category Details** | ✅ **90%** | `GET /api/category/{id}` + meals | — |
+| 6 | **Meals** | 🟡 **75%** | `GET /api/home`, meal show | no `/meals` list |
+| 7 | **Meal Details** | ✅ **90%** | `GET /api/meal/{id}` | ingredients ✅ |
 | 8 | **Favorites** | ✅ **95%** | index, store, destroy | — |
-| 9 | **Cart** | ✅ **90%** | index, add, remove | — |
-| 10 | **Checkout** | 🟡 **80%** | `POST /api/order/store` | no preview step |
-| 11 | **Payment** | 🟡 **78%** | payment-methods + Stripe setup-intent | Cashflow via Stripe |
-| 12 | **My Orders** | ✅ **92%** | `GET /api/order` | — |
-| 13 | **Order Details** | ✅ **92%** | `GET /api/order/show/{id}` | — |
-| 14 | **Notifications** | ✅ **88%** | index, unread, mark read | — |
+| 9 | **Cart** | ✅ **90%** | index, add, remove | no quantity update endpoint |
+| 10 | **Checkout** | 🟡 **80%** | `POST /api/order/store` | merged with payment |
+| 11 | **Payment** | ✅ **85%** | Stripe Cashier + payment-methods | — |
+| 12 | **My Orders** | ✅ **92%** | `GET /api/order` | paginated ✅ |
+| 13 | **Order Details** | ✅ **92%** | `GET /api/order/show/{id}` | ownership ✅ |
+| 14 | **Notifications** | ✅ **88%** | index, unread, mark read | no mark-all |
 | 15 | **Settings** | 🔴 **0%** | — | — |
 | 16 | **Admin** | 🔴 **0%** | — | — |
 
@@ -565,30 +477,52 @@ final class LoginController extends Controller
 ### 13.2 Route Map
 
 ```
-/api/home, /category, /meal/{id}           ✅
-/api/favorite/*, /cart/*, /profile/*       ✅
-/api/order/* (index, show, store)          ✅
-/api/notifications/*, /payment-methods/*   ✅
-/api/settings, /admin/*                    ❌
+POST /api/register, /login, /logout                    ✅
+POST /api/send-otp, /verify-otp, /reset-password     ✅
+POST /api/send-verification-otp, /verify-phone       ✅
+
+GET  /api/home, /category, /category/{id}, /meal/{id}  ✅ (phone.verified)
+/api/favorite/*, /cart/*, /profile/*                   ✅
+/api/order/* (index, show, store)                     ✅
+/api/notifications/*, /payment-methods/*             ✅
+
+/api/settings, /admin/*, GET /api/meals               ❌
 ```
 
-### 13.3 Feature Completeness Scorecard
+### 13.3 Database Tables
+
+| Table | موجود | API Wired |
+|-------|-------|-----------|
+| `users` | ✅ | Auth + Profile |
+| `categories`, `meals`, `ingredients` | ✅ | Catalog |
+| `favorites`, `carts` | ✅ | Favorites + Cart |
+| `orders`, `order_items` | ✅ | Orders |
+| `payment_methods` | ✅ | Stripe |
+| `notifications` | ✅ | Notifications |
+| Cashier tables (subscriptions) | ✅ | unused for subs |
+| `settings` | ❌ | — |
+
+### 13.4 Feature Completeness Scorecard
 
 | Category | Score |
 |----------|-------|
-| Auth + Profile + Catalog | 88% |
-| Cart + Orders + Payment | 85% |
+| Auth + Reset + Phone Verify | 90% |
+| Profile + Catalog | 85% |
+| Cart + Favorites | 92% |
+| Checkout + Payment + Orders | 87% |
 | Notifications | 88% |
 | Settings + Admin | 0% |
 | **Overall** | **~70%** |
+
 ---
 
-## 12. المراجع
+## 14. المراجع
 
-- [Laravel Form Requests](https://laravel.com/docs/validation#form-request-validation)
 - [Laravel Sanctum](https://laravel.com/docs/sanctum)
-- [SOLID Principles in PHP](https://www.php.net/manual/en/language.oop5.basic.php)
-- مراجعة Elham (نفس Bootcamp): [elham/FoodIfy/CODE_REVIEW.md](../elham/FoodIfy/CODE_REVIEW.md)
+- [Laravel Cashier (Stripe)](https://laravel.com/docs/cashier)
+- [Laravel Form Requests](https://laravel.com/docs/validation#form-request-validation)
+- مراجعة Mohamed Esmail: [mohamedEsmail/FoodIfy/CODE_REVIEW.md](../../mohamedEsmail/FoodIfy/CODE_REVIEW.md)
+- مراجعة Ali: [ali/FoodIfy/CODE_REVIEW.md](../../ali/FoodIfy/CODE_REVIEW.md)
 
 ---
 
